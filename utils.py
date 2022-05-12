@@ -14,6 +14,24 @@ from sklearn.model_selection import train_test_split
 
 from generator import *
 
+import cython
+import warnings
+import pyximport
+
+warnings.filterwarnings('ignore', '.*deprecated NumPy.*')
+pyximport.install(
+    setup_args={'include_dirs': np.get_include(), },
+    reload_support=True,
+)
+
+from functions import (
+    load_image,
+    num2deg,
+    deg2num,
+    degs2nums,
+    nums2degs,
+)
+
 def generate_images(model, test_input, tar):
     prediction = model(test_input, training=True)
     plt.figure(figsize=(15, 15))
