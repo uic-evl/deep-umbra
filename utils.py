@@ -204,7 +204,7 @@ def load_image_test(paths):
     return input_image, real_image, lat_image, date_image
 
 
-def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city, batch_size):
+def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city, batch_size = 2, train_size = 0.6):
 
     def get_path(row, city, date):
         values = [height_path, shadow_path, city, date, '%d/%d/%d.png'%(row['zoom'],row['i'],row['j'])]
@@ -219,7 +219,7 @@ def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city
             df = df.sample(n=tiles_per_city, random_state=42)
             ds = df.apply(get_path, args=(city, date), axis=1).tolist()
             all_dataset.extend(ds)
-    train_dataset, test_dataset = train_test_split(all_dataset, train_size=0.6, random_state=42)
+    train_dataset, test_dataset = train_test_split(all_dataset, train_size=train_size, random_state=42)
 
     train_dataset = tf.data.Dataset.from_tensor_slices(train_dataset)
     train_dataset = train_dataset.map(load_image_train,num_parallel_calls=tf.data.AUTOTUNE)
