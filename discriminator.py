@@ -3,13 +3,15 @@ import tensorflow as tf
 from generator import *
 from loss import *
 
-def Discriminator():
+def Discriminator(width, height):
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    inp = tf.keras.layers.Input(shape=[256, 256, 3], name='input_image')
-    tar = tf.keras.layers.Input(shape=[256, 256, 3], name='target_image')
+    inp = tf.keras.layers.Input(shape=[width, height, 1], name='input_image')
+    tar = tf.keras.layers.Input(shape=[width, height, 1], name='target_image')
+    lat = tf.keras.layers.Input(shape=[width, height, 1], name='latitude')
+    dat = tf.keras.layers.Input(shape=[width, height, 1], name='date')
 
-    x = tf.keras.layers.concatenate([inp, tar])  # (batch_size, 256, 256, channels*2)
+    x = tf.keras.layers.concatenate([inp, tar, lat, dat])  # (batch_size, 256, 256, channels*2)
 
     down1 = downsample(64, 4, False)(x)  # (batch_size, 128, 128, 64)
     down2 = downsample(128, 4)(down1)  # (batch_size, 64, 64, 128)
@@ -26,5 +28,4 @@ def Discriminator():
 
     last = tf.keras.layers.Conv2D(1, 4, strides=1,kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
 
-    return tf.keras.Model(inputs=[inp, tar], outputs=last)
-
+    return tf.keras.Model(inputs=[inp, tar, lat, dat], outputs=last)

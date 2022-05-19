@@ -4,3 +4,6 @@ data/
 results/
 osmium-tool/
 processes/
+__pycache__/
+logs/
+training_checkpoints/

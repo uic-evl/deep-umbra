@@ -1,12 +1,5 @@
 from loss import *
 
-# The batch size of 1 produced better results for the U-Net in the original pix2pix experiment
-BATCH_SIZE = 1
-# Each image is 256x256 in size
-IMG_WIDTH = 256
-IMG_HEIGHT = 256
-OUTPUT_CHANNELS = 3
-# encoder
 def downsample(filters, size, apply_batchnorm=True):
     initializer = tf.random_normal_initializer(0., 0.02)
 
@@ -20,7 +13,6 @@ def downsample(filters, size, apply_batchnorm=True):
 
     return result
 
-# decoder
 def upsample(filters, size, apply_dropout=False):
     initializer = tf.random_normal_initializer(0., 0.02)
 
@@ -35,8 +27,10 @@ def upsample(filters, size, apply_dropout=False):
 
     return result
 
-def Generator():
-    inputs = tf.keras.layers.Input(shape=[256, 256, 3])
+def Generator(width, height):
+    inputs = tf.keras.layers.Input(shape=[width, height, 1])
+    lat = tf.keras.layers.Input(shape=[width,height,1])
+    dat = tf.keras.layers.Input(shape=[width,height,1])
 
     down_stack = [
         downsample(64, 4, apply_batchnorm=False),  # (batch_size, 128, 128, 64)
@@ -60,13 +54,13 @@ def Generator():
     ]
 
     initializer = tf.random_normal_initializer(0., 0.02)
-    last = tf.keras.layers.Conv2DTranspose(OUTPUT_CHANNELS, 4,
+    last = tf.keras.layers.Conv2DTranspose(1, 4,
                                          strides=2,
                                          padding='same',
                                          kernel_initializer=initializer,
                                          activation='tanh')  # (batch_size, 256, 256, 3)
 
-    x = inputs
+    x = tf.keras.layers.concatenate([inputs, lat, dat])
 
     # Downsampling through the model
     skips = []
@@ -83,5 +77,5 @@ def Generator():
 
     x = last(x)
 
-    return tf.keras.Model(inputs=inputs, outputs=x)
+    return tf.keras.Model(inputs=[inputs, lat, dat], outputs=x)
 
