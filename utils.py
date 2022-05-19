@@ -241,3 +241,23 @@ def compute_rmse(prediction, target):
 
     rmse = np.sqrt(np.mean((prediction-target)**2))
     return rmse
+
+def compute_r2(prediction, target):
+    target = target.numpy()[:,128:-128,128:-128,:]
+    prediction = prediction.numpy()[:,128:-128,128:-128,:]
+
+    target = target * 0.5 + 0.5
+    prediction = prediction * 0.5 + 0.5
+
+    r2 = 1 - (np.sum((target-prediction)**2)/np.sum((target-np.mean(target))**2))
+    return r2
+
+def compute_mae(prediction, target):
+    target = target.numpy()[:,128:-128,128:-128,:]
+    prediction = prediction.numpy()[:,128:-128,128:-128,:]
+
+    target = target * 0.5 + 0.5
+    prediction = prediction * 0.5 + 0.5
+
+    mae = np.mean(np.abs(target-prediction))
+    return mae
