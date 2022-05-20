@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import random
 from IPython import display
 from sklearn.model_selection import train_test_split
 
@@ -203,15 +204,14 @@ def load_image_test(paths):
 
     return input_image, real_image, lat_image, date_image
 
-
-def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city, batch_size = 2, train_size = 0.6):
-
+    
+def get_tiles(height_path, shadow_path, cities, dates, zoom, tiles_per_city):
     def get_path(row, city, date):
         values = [height_path, shadow_path, city, date, '%d/%d/%d.png'%(row['zoom'],row['i'],row['j'])]
         for i in range(0,9):
             values.append(str(row[str(i)]))
         return values
-
+    
     all_dataset = []
     for city in cities:
         for date in dates:
@@ -219,8 +219,11 @@ def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city
             df = df.sample(n=tiles_per_city, random_state=42)
             ds = df.apply(get_path, args=(city, date), axis=1).tolist()
             all_dataset.extend(ds)
-    train_dataset, test_dataset = train_test_split(all_dataset, train_size=train_size, random_state=42)
+            
+    return all_dataset
 
+def to_tensor(train_dataset, test_dataset, batch_size):
+    
     train_dataset = tf.data.Dataset.from_tensor_slices(train_dataset)
     train_dataset = train_dataset.map(load_image_train,num_parallel_calls=tf.data.AUTOTUNE)
     train_dataset = train_dataset.shuffle(len(train_dataset))
@@ -229,8 +232,39 @@ def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city
     test_dataset = tf.data.Dataset.from_tensor_slices(test_dataset)
     test_dataset = test_dataset.map(load_image_test)
     test_dataset = test_dataset.batch(batch_size)
+    
+    return train_dataset, test_dataset
+
+    
+def get_train_test(height_path, shadow_path, cities, dates, zoom, tiles_per_city, batch_size = 2, train_size = 0.6):
+  
+    all_dataset = get_tiles(height_path, shadow_path, cities, dates, zoom, tiles_per_city)
+    
+    train_dataset, test_dataset = train_test_split(all_dataset, train_size=train_size, random_state=42)
+    
+    train_dataset, test_dataset = to_tensor(train_dataset, test_dataset, batch_size)
 
     return train_dataset, test_dataset
+
+
+def get_metrics(test_dataset, generator):
+    rmses = []
+    maes = []
+    r2s = []
+    for test_input, test_target, test_latitude, test_date in test_dataset:
+        prediction = generator([test_input, test_latitude, test_date], training=True)
+
+        rmse = compute_rmse(prediction, test_target)
+        rmses.append(rmse)
+        
+        mae = compute_mae(prediction, test_target)
+        maes.append(mae)
+        
+        r2 = compute_r2(prediction, test_target)
+        r2s.append(r2)
+        
+    return rmses, maes, r2s
+
 
 def compute_rmse(prediction, target):
     target = target.numpy()[:,128:-128,128:-128,:]
@@ -248,7 +282,7 @@ def compute_r2(prediction, target):
 
     target = target * 0.5 + 0.5
     prediction = prediction * 0.5 + 0.5
-
+    
     r2 = 1 - (np.sum((target-prediction)**2)/np.sum((target-np.mean(target))**2))
     return r2
 
