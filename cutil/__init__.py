@@ -15,11 +15,8 @@ from .functions import (
     deg2num,
     degs2nums,
     nums2degs,
+    xtiles_from_lons,
+    ytiles_from_lats,
+    lons_from_xtiles,
+    lats_from_ytiles,
 )
-# from shadow.cutil.functions import (
-#     load_image,
-#     num2deg,
-#     deg2num,
-#     degs2nums,
-#     nums2degs,
-# )
