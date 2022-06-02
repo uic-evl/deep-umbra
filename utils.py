@@ -28,12 +28,12 @@ def plot_result(input_height, prediction):
     plt.figure(figsize=(15, 15))
     
     display_list = [input_height, prediction]
-    title = ['Input Image (x10)', 'Predicted Image']
+    title = ['Input Image', 'Predicted Image']
 
     plt.subplot(1, 3, 1)
     plt.title(title[0])
     # Getting the pixel values in the [0, 1] range to plot.
-    plt.imshow((display_list[0] * 0.5 + 0.5) * 10)
+    plt.imshow((display_list[0] * 0.5 + 0.5))
     plt.axis('off')
     
     plt.subplot(1, 3, 2)
@@ -48,12 +48,12 @@ def plot_comparison(input_height, target, prediction):
     plt.figure(figsize=(15, 15))
     
     display_list = [input_height, target, prediction]
-    title = ['Input Image (x10)', 'Ground Truth', 'Predicted Image']
+    title = ['Input Image)', 'Ground Truth', 'Predicted Image']
 
     plt.subplot(1, 3, 1)
     plt.title(title[0])
     # Getting the pixel values in the [0, 1] range to plot.
-    plt.imshow((display_list[0] * 0.5 + 0.5) * 10)
+    plt.imshow((display_list[0] * 0.5 + 0.5))
     plt.axis('off')
     
     plt.subplot(1, 3, 2)

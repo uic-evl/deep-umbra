@@ -21,6 +21,5 @@ scikit_learn
 setuptools
 shadow
 Shapely
-skimage
 spatialpandas
 tensorflow

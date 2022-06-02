@@ -1,5 +1,6 @@
 if True:
     from util_raster import get_utm_from_lon_lat, get_raster_path
+import geopandas as gpd
 import concurrent.futures
 import concurrent.futures
 import math
@@ -480,6 +481,48 @@ class Surfaces:
             raise ValueError(f"{file=} is not a PBF file")
         self._file = file
         self._shadow_dir = shadow_dir
+
+
+    @classmethod
+    def concatenate_from_files(cls, files: list[str]) -> DataFrame:
+        """
+        :param files: list of .feather files that will be concatenated for comparison across cities
+        :return:    DataFrame, with the indices, sum, and weighted sums of each entry
+        """
+
+        def gdfs() -> Iterator[GeoDataFrame]:
+            it_files = iter(files)
+            with concurrent.futures.ThreadPoolExecutor() as threads:
+                prev_future = threads.submit(gpd.read_feather, next(it_files))
+                try:
+                    next_future = threads.submit(gpd.read_feather, next(it_files))
+                except StopIteration:
+                    yield prev_future.result()
+                    return
+                for file in files:
+                    yield prev_future.result()
+                    prev_future = next_future
+                    next_future = threads.submit(gpd.read_feather, file)
+                yield next_future.result()
+
+        def dfs() -> Iterator[GeoDataFrame]:
+            for gdf in gdfs():
+                centroid: shapely.geometry.base.BaseGeometry = gdf[gdf.geometry.notna()].geometry.iloc[0].centroid
+                utm = get_utm_from_lon_lat(centroid.x, centroid.y)
+                area = (
+                    GeoSeries.to_crs(gdf['geometry'], utm)
+                        .area
+                )
+                sum = pd.Series.astype(gdf['sum'], 'Float64')
+                weighted = sum / area
+                yield DataFrame({
+                    'sum': sum,
+                    'weighted': weighted,
+                }, index=gdf.index)
+
+        concat = pd.concat(dfs())
+        return concat
+
 
 
 class _Namespace:
