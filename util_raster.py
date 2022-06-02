@@ -8,7 +8,7 @@ import tempfile
 from typing import Iterator
 
 if True:
-    from shadow.cutil import (
+    from cutil import (
         xtiles_from_lons,
         ytiles_from_lats,
         lons_from_xtiles,
