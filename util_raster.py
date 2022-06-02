@@ -7,33 +7,118 @@ import glob
 import tempfile
 from typing import Iterator
 
-if True:
-    from shadow.cutil import (
-        xtiles_from_lons,
-        ytiles_from_lats,
-        lons_from_xtiles,
-        lats_from_ytiles,
-    )
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import Series, DataFrame
 
 import geopandas as gpd
 
-import skimage.io
 import concurrent.futures
 import os
+import math
 
 import pandas as pd
 import pyproj
 
-from cutil import deg2num, nums2degs, num2deg
-import pygeos.creation
 import cv2
-import cython
 import numpy as np
 
 import pyproj.aoi
 
+def _deg2num(lon_deg, lat_deg,  zoom, always_xy):
+    # lat_rad = math.radians(lat_deg)
+    lat_rad = lat_deg * math.pi / 180.0
+
+    n = 2 ** zoom
+    xtile = ((lon_deg + 180) / 360 * n)
+    ytile = ((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    if always_xy:
+        return xtile, ytile
+    else:
+        return ytile, xtile
+
+def deg2num(
+        lon_deg: float,
+        lat_deg: float,
+        zoom: int,
+        always_xy = True,
+) -> tuple[int, int]:
+    """
+
+    :param lat_deg:
+    :param lon_deg:
+    :param zoom:
+    :return: xtile, ytile
+    """
+    return _deg2num(lon_deg, lat_deg, zoom, always_xy)
+
+def _num2deg(xtile, ytile, zoom, always_xy):
+    n = 2 ** zoom
+    lon_deg = xtile / n * 360 - 180
+    lat_rad = math.atan(math.sinh(math.pi * (1.0 - 2.0 * ytile / n)))
+    # lat_deg = math.degrees(lat_rad)
+    lat_deg = lat_rad * 180.0 / math.pi
+    if always_xy:
+        return lon_deg, lat_deg
+    else:
+        return lat_deg, lon_deg
+    # return lat_deg, lon_deg
+
+def num2deg(xtile: float, ytile: float, zoom: int, always_xy = False) -> tuple[float, float]:
+    """
+
+    :param xtile:
+    :param ytile:
+    :param zoom:
+    :return: latitude, longitude
+    """
+    return _num2deg(xtile, ytile, zoom, always_xy)
+
+def _xtiles_from_lons(lons, zoom, ):
+    length = len(lons)
+    n = 2 ** zoom
+    xtiles = np.zeros(length, dtype=np.uint32)
+    for k in range(length):
+        xtiles[k] = ((lons[k] + 180) / 360 * n)
+    return xtiles
+
+def xtiles_from_lons(lons: np.ndarray, zoom: int):
+    return _xtiles_from_lons(lons, zoom)
+
+def _ytiles_from_lats(lons, zoom, ):
+    length = len(lons)
+    n = 2 ** zoom
+    ytiles = np.zeros(length, dtype=np.uint32)
+    for k in range(length):
+        ytiles[k] = ((lons[k] + 180) / 360 * n)
+    return ytiles
+
+def ytiles_from_lats(lats: np.ndarray, zoom: int):
+    return _ytiles_from_lats(lats, zoom)
+
+def _lons_from_xtiles(xtiles, zoom):
+    length = len(xtiles)
+    n = 2 ** zoom
+    lons = np.zeros(length, dtype=np.float64)
+    for k in range(length):
+        lons[k] = 360.0 * xtiles[k] / n - 180
+    return lons
+
+def lons_from_xtiles(xtiles: np.ndarray, zoom: int):
+    return _lons_from_xtiles(xtiles, zoom)
+
+def _lats_from_ytiles(ytiles, zoom):
+    length = len(ytiles)
+    n = 2 ** zoom
+    lats = np.zeros(length, dtype=np.float64)
+    rad_to_deg = 180.0 / math.pi
+    for k in range(length):
+        lats[k] = (
+                math.atan(math.sinh(math.pi * (1.0 - 2.0 * ytiles[k] / n))) * rad_to_deg
+        )
+    return lats
+
+def lats_from_ytiles(ytiles: np.ndarray, zoom: int):
+    return _lats_from_ytiles(ytiles, zoom)
 
 def get_utm_from_lon_lat(lon: float, lat: float) -> pyproj.crs.CRS:
     buffer = .001
