@@ -512,7 +512,7 @@ class Surfaces:
                     GeoSeries.to_crs(gdf['geometry'], utm)
                         .area
                 )
-                sum = gdf['sum']
+                sum = pd.Series.astype(gdf['sum'], 'Float64')
                 weighted = sum / area
                 yield DataFrame({
                     'sum': sum,
