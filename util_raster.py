@@ -80,18 +80,14 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
     xtiles = np.tile(xtiles, r_tilecount)
 
     tiles = np.char.add(xtiles, ytiles)
-    tiles = set(tiles)
-
-    pathname = os.path.join(basedir, f'**/{zoom}/[0-9]*/[0-9]*.png')
-
-    # paths is not aligned with xtiles
-    paths: list[str] = [
+    directory = os.path.join(basedir, str(zoom)) + os.sep
+    relevant = np.char.add(directory, tiles)
+    paths = [
         path
-        for path in glob.iglob(pathname, recursive=True)
-        if path[
-           path.rfind('/', 0, path.rfind('/')) + 1::
-           ] in tiles
+        for path in relevant
+        if os.path.exists(path)
     ]
+
     images: Iterator[np.ndarray] = concurrent.futures.ThreadPoolExecutor().map(lambda p: cv2.imread(p)[:, :, 0], paths)
     partitions: Iterator[str] = (
         path.rpartition('.')[0]
@@ -116,6 +112,7 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
 
 
 def get_raster_path(gw: float, gs: float, ge: float, gn: float, zoom: int, basedir: str, outdir: str = None) -> str:
+    "returns the path of the raster file"
     tw, tn = deg2num(gw, gn, zoom, True)
     te, ts = deg2num(ge, gs, zoom, True)
     te += 1
