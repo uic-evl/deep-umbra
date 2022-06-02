@@ -126,8 +126,8 @@ def get_raster_path(gw: float, gs: float, ge: float, gn: float, zoom: int, based
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     outpath = os.path.join(outdir, f'{zoom}_{tw}_{ts}_{te}_{tn}.tif')
-    if os.path.exists(outpath):
-        return outpath
+    # if os.path.exists(outpath):
+    #     return outpath
 
     image = get_shadow_image(gw, gs, ge, gn, zoom, basedir)
     height, width = image.shape
