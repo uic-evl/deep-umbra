@@ -167,7 +167,8 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
     tiles = np.char.add(xtiles, ytiles)
     tiles = set(tiles)
 
-    pathname = os.path.join(basedir, f'**/{zoom}/[0-9]*/[0-9]*.png')
+    pathname = os.path.join(basedir, f'{zoom}/[0-9]*/[0-9]*.png')
+    print(pathname)
 
     # paths is not aligned with xtiles
     paths: list[str] = [
@@ -177,6 +178,7 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
            path.rfind('/', 0, path.rfind('/')) + 1::
            ] in tiles
     ]
+    print(len(tiles))
     images: Iterator[np.ndarray] = concurrent.futures.ThreadPoolExecutor().map(lambda p: cv2.imread(p)[:, :, 0], paths)
     partitions: Iterator[str] = (
         path.rpartition('.')[0]
