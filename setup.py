@@ -1,9 +1,6 @@
 from setuptools import dist
 
-dist.Distribution().fetch_build_egg([
-    'Cython>=0.15.1',
-    'numpy>=1.10',
-])
+dist.Distribution().fetch_build_eggs(['Cython>=0.15.1', 'numpy>=1.10'])
 from Cython.Build import cythonize
 import warnings
 from pathlib import Path
