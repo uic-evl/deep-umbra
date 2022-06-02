@@ -74,7 +74,7 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
     xtiles = xtiles.astype('U10')
 
     ytiles = np.char.add(ytiles, '.png')
-    xtiles = np.char.add(xtiles, '/')
+    xtiles = np.char.add(xtiles, os.sep)
 
     ytiles = np.repeat(ytiles, c_tilecount)
     xtiles = np.tile(xtiles, r_tilecount)
@@ -94,12 +94,12 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
         for path in paths
     )
     partitions: Iterator[tuple[str, str, str]] = (
-        partition.rpartition('/')
+        partition.rpartition(os.sep)
         for partition in partitions
     )
     xtiles_ytiles: Iterator[tuple[int, int]] = (
         (
-            int(partition[0].rpartition('/')[2]),
+            int(partition[0].rpartition(os.sep)[2]),
             int(partition[2])
         )
         for partition in partitions
