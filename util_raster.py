@@ -81,6 +81,7 @@ def get_shadow_image(gw: float, gs: float, ge: float, gn: float, zoom: int, base
 
     tiles = np.char.add(xtiles, ytiles)
     directory = os.path.join(basedir, str(zoom)) + os.sep
+    directory = os.path.normpath(directory)
     relevant = np.char.add(directory, tiles)
     paths = [
         path
