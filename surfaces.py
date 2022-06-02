@@ -506,7 +506,7 @@ class Surfaces:
 
         def dfs() -> Iterator[GeoDataFrame]:
             for gdf in gdfs():
-                centroid = gdf.geometry.iloc[0].centroid
+                centroid: shapely.geometry.base.BaseGeometry = gdf[gdf.geometry.notna()].geometry.iloc[0].centroid
                 utm = get_utm_from_lon_lat(centroid.x, centroid.y)
                 area = (
                     GeoSeries.to_crs(gdf['geometry'], utm)
