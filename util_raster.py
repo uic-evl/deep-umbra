@@ -196,7 +196,7 @@ def get_shadow_image(
         for partition in partitions
     )
 
-    raster = np.zeros((256 * r_tilecount, 256 * c_tilecount), dtype=np.uint8)
+    raster = np.zeros((256 * r_tilecount, 256 * c_tilecount), dtype=np.int16)
     for (xtile, ytile), image in zip(xtiles_ytiles, images):
         raster[rslices[ytile], cslices[xtile]] = image
 
@@ -204,7 +204,7 @@ def get_shadow_image(
     ceil = math.ceil(threshold[1] * 255)
     raster[np.logical_or(
         raster < floor,
-        raster >= ceil
+        raster > ceil
     )] = -1
     # if threshold > 0:
     #     cutoff = math.ceil(threshold * 255)

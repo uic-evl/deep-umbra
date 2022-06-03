@@ -421,6 +421,7 @@ class DescriptorNetwork:
         with concurrent.futures.ProcessPoolExecutor() as processes:
             results = processes.map(gen_zonal_stats, interfaces, itertools.repeat(raster), itertools.repeat(stats))
             results = list(results)
+
         arr = np.concatenate(results)
 
         columns = {
