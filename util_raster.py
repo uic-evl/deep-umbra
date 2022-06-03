@@ -11,7 +11,7 @@ import os
 
 import pyproj
 
-from shadow.cutil import deg2num, num2deg
+from cutil import deg2num, num2deg
 import cv2
 import numpy as np
 

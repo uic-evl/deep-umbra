@@ -1,7 +1,7 @@
 import time
 
 if True:
-    from shadow.util import get_utm_from_lon_lat, get_raster_path, get_raster_affine
+    from util_raster import get_utm_from_lon_lat, get_raster_path, get_raster_affine
 import concurrent.futures
 import concurrent.futures
 import math
@@ -516,9 +516,13 @@ class DescriptorNetwork:
         nodes: Optional[GeoDataFrame]
         geometry: GeoDataFrame
         if 'u' in geometry:
-            geometry = geometry['id name geometry u v length surface'.split()]
+            geometry = geometry['id name geometry u v length surface tunnel'.split()]
         else:
-            geometry = geometry['id name geometry length'.split()]
+            geometry = geometry['id name geometry length tunnel'.split()]
+
+        loc = pd.Series.isin(geometry['tunnel'], {'passage', 'yes', 'building_passage', 'covered'})
+        geometry = geometry.loc[~loc]
+        geometry = geometry.drop('tunnel', axis=1)
         return nodes, geometry
 
     def __init__(self):
@@ -654,14 +658,14 @@ if __name__ == '__main__':
         osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
         bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
     )
-    t = time.time()
-    parks = Surfaces.parks.rasterstats_from_file(
-        path,
-        '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
-        # threshold=.25
-    )
-    print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+    # t = time.time()
+    # parks = Surfaces.parks.rasterstats_from_file(
+    #     path,
+    #     '/home/arstneio/Downloads/shadows/test/winter/',
+    #     zoom=16,
+    #     # threshold=.25
+    # )
+    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
     t = time.time()
     networks = Surfaces.networks.driving.rasterstats_from_file(
         path,
