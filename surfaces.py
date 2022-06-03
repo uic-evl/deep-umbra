@@ -114,9 +114,10 @@ def gen_zonal_stats(
     def assertion() -> Iterator[Iterable[float]]:
         for output in gen:
             assert all(a == b for a, b in zip(output.keys(), stats))
-            yield output.values()
+            yield from output.values()
+            # yield output.values()
 
-    chain = itertools.chain.from_iterable(assertion())
+    chain = assertion()
 
     # chain = itertools.chain.from_iterable(map(dict.values, gen))
 
