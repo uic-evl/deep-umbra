@@ -110,13 +110,16 @@ def gen_zonal_stats(
 
     # chain = itertools.chain.from_iterable(map(dict.values, gen))
 
-    # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
+    # # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
     def assertion() -> Iterator[Iterable[float]]:
         for output in gen:
             assert all(a == b for a, b in zip(output.keys(), stats))
             yield output.values()
 
     chain = itertools.chain.from_iterable(assertion())
+
+    # chain = itertools.chain.from_iterable(map(dict.values, gen))
+
     arr = np.fromiter(chain, dtype=np.float64, count=rows * columns)
     arr /= 255
     arr = arr.reshape((rows, columns))
@@ -222,7 +225,7 @@ class DescriptorParks(osmium.SimpleHandler):
             file: str,
             shadow_dir: str,
             zoom: int,
-            threshold: float,
+            threshold: tuple[float, float],
             stats: list[str],
     ) -> GeoDataFrame:
         if '.' not in file:
@@ -291,7 +294,7 @@ class DescriptorParks(osmium.SimpleHandler):
             files: list[str],
             shadow_dir: str,
             zoom: int,
-            threshold: float,
+            threshold: tuple[float, float],
             stats: list[str],
     ) -> Iterator[GeoDataFrame]:
         sources = (
@@ -333,7 +336,7 @@ class DescriptorParks(osmium.SimpleHandler):
             files: Union[str, list[str]],
             shadow_dir: str,
             zoom: int,
-            threshold: float = 0.0,
+            threshold: tuple[float, float] = (0.0, 1.0),
             stats: Collection[str] = tuple('min max mean sum median nodata'.split())
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
@@ -364,7 +367,7 @@ class DescriptorNetwork:
             file: str,
             shadow_dir: str,
             zoom: int,
-            threshold: float,
+            threshold: tuple[float, float],
             stats: list[str],
     ) -> GeoDataFrame:
         """
@@ -479,7 +482,7 @@ class DescriptorNetwork:
             files: Union[str, list[str]],
             shadow_dir: str,
             zoom: int,
-            threshold: float = 0.0,
+            threshold: tuple[float, float] = (0.0, 1.0),
             stats: Collection[str] = tuple('min max mean sum median nodata'.split()),
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
