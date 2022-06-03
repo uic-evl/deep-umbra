@@ -568,7 +568,7 @@ class DescriptorDrivingNetwork(DescriptorNetwork):
 
 
 class DescriptorDrivingServiceNetwork(DescriptorNetwork):
-    network_type = 'driving_service'
+    network_type = 'driving+service'
 
 
 class DescriptorAllNetwork(DescriptorNetwork):

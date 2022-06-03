@@ -138,7 +138,7 @@ def get_shadow_image(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: list[float] = [0.0, 1.0],
+        threshold: tuple[float, float]
 ) -> np.ndarray:
     # Note: python 3.9 glob.glob() does not have kwarg root_dir
     tw, tn = deg2num(gw, gn, zoom, True)
@@ -199,10 +199,17 @@ def get_shadow_image(
     raster = np.zeros((256 * r_tilecount, 256 * c_tilecount), dtype=np.uint8)
     for (xtile, ytile), image in zip(xtiles_ytiles, images):
         raster[rslices[ytile], cslices[xtile]] = image
-    if threshold[0] > 0 and threshold[1] < 1.0:
-        cutoff = math.ceil(threshold * 255)
-        raster[np.logical_or(raster < threshold[0], raster > threshold[1])] = -1
-        # raster[0 <= raster < cutoff] = 0    # because -1 is currently our nodata
+
+    floor = math.floor(threshold[0] * 255)
+    ceil = math.ceil(threshold[1] * 255)
+    raster[np.logical_or(
+        raster < floor,
+        raster >= ceil
+    )] = -1
+    # if threshold > 0:
+    #     cutoff = math.ceil(threshold * 255)
+    #     image[np.logical_and(0 <= image, image < cutoff)] = nodata
+
     return raster
 
 
@@ -213,8 +220,9 @@ def get_raster_path(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: list[float] = [0.0,1.0],
+        threshold: tuple[float, float] = (0.0, 1.0),
         outdir: str = None,
+        nodata: int = -1
 ) -> str:
     tw, tn = deg2num(gw, gn, zoom, True)
     te, ts = deg2num(ge, gs, zoom, True)
@@ -252,13 +260,14 @@ def get_raster_path(
             width=width,
             count=1,
             dtype=np.int16,
-            nodata=-1,
+            nodata=nodata,
             crs=4326,
             transform=transform,
     ) as f:
         f.write(image, 1)
 
     return outpath
+
 
 def get_raster_affine(
         gw: float,
@@ -267,7 +276,7 @@ def get_raster_affine(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: list[float] = [0.0,1.0],
+        threshold: tuple[float, float] = (0.0, 1.0)
 ) -> tuple[np.ndarray, tuple]:
     "Returns the array and the Affnie transformation"
     tw, tn = deg2num(gw, gn, zoom, True)
@@ -297,7 +306,6 @@ def get_raster_affine(
     image = image / 255
     transform = rasterio.transform.from_bounds(gw, gs, ge, gn, width, height)
     return image, transform
-
 
 
 if __name__ == '__main__':
