@@ -103,7 +103,8 @@ def get_shadow_image(
         raster[rslices[ytile], cslices[xtile]] = image
     if threshold > 0:
         cutoff = math.ceil(threshold * 255)
-        raster[0 <= raster < cutoff] = 0    # because -1 is currently our nodata
+        raster[np.logical_and(0 <= raster, raster < cutoff)] = 0
+        # raster[0 <= raster < cutoff] = 0    # because -1 is currently our nodata
     return raster
 
 
