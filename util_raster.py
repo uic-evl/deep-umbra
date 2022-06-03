@@ -122,7 +122,7 @@ def get_raster_path(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: float = 0.0,
+        threshold: tuple[float, float] = (0.0, 1.0),
         outdir: str = None,
         nodata: int = -1
 ) -> str:
