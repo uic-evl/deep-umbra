@@ -111,13 +111,17 @@ def gen_zonal_stats(
 
     # chain = itertools.chain.from_iterable(map(dict.values, gen))
 
-    # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
+    # # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
     def assertion() -> Iterator[Iterable[float]]:
         for output in gen:
             assert all(a == b for a, b in zip(output.keys(), stats))
-            yield output.values()
+            yield from output.values()
+            # yield output.values()
 
-    chain = itertools.chain.from_iterable(assertion())
+    chain = assertion()
+
+    # chain = itertools.chain.from_iterable(map(dict.values, gen))
+
     arr = np.fromiter(chain, dtype=np.float64, count=rows * columns)
     arr /= 255
     arr = arr.reshape((rows, columns))
@@ -223,7 +227,7 @@ class DescriptorParks(osmium.SimpleHandler):
             file: str,
             shadow_dir: str,
             zoom: int,
-            threshold: list[float],
+            threshold: tuple[float, float],
             stats: list[str],
     ) -> GeoDataFrame:
         if '.' not in file:
@@ -292,7 +296,7 @@ class DescriptorParks(osmium.SimpleHandler):
             files: list[str],
             shadow_dir: str,
             zoom: int,
-            threshold: list[float],
+            threshold: tuple[float, float],
             stats: list[str],
     ) -> Iterator[GeoDataFrame]:
         sources = (
@@ -334,7 +338,7 @@ class DescriptorParks(osmium.SimpleHandler):
             files: Union[str, list[str]],
             shadow_dir: str,
             zoom: int,
-            threshold: list[float] = [0.0, 1.0],
+            threshold: tuple[float, float] = (0.0, 1.0),
             stats: Collection[str] = tuple('min max mean sum median nodata'.split())
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
@@ -365,7 +369,7 @@ class DescriptorNetwork:
             file: str,
             shadow_dir: str,
             zoom: int,
-            threshold: list[float],
+            threshold: tuple[float, float],
             stats: list[str],
     ) -> GeoDataFrame:
         """
@@ -480,7 +484,7 @@ class DescriptorNetwork:
             files: Union[str, list[str]],
             shadow_dir: str,
             zoom: int,
-            threshold: float = 0.0,
+            threshold: tuple[float, float] = (0.0, 1.0),
             stats: Collection[str] = tuple('min max mean sum median nodata'.split()),
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
@@ -513,9 +517,13 @@ class DescriptorNetwork:
         nodes: Optional[GeoDataFrame]
         geometry: GeoDataFrame
         if 'u' in geometry:
-            geometry = geometry['id name geometry u v length surface'.split()]
+            geometry = geometry['id name geometry u v length surface tunnel'.split()]
         else:
-            geometry = geometry['id name geometry length'.split()]
+            geometry = geometry['id name geometry length tunnel'.split()]
+
+        loc = pd.Series.isin(geometry['tunnel'], {'passage', 'yes', 'building_passage', 'covered'})
+        geometry = geometry.loc[~loc]
+        geometry = geometry.drop('tunnel', axis=1)
         return nodes, geometry
 
     def __init__(self):
@@ -651,14 +659,14 @@ if __name__ == '__main__':
         osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
         bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
     )
-    t = time.time()
-    parks = Surfaces.parks.rasterstats_from_file(
-        path,
-        '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
-        # threshold=.25
-    )
-    print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+    # t = time.time()
+    # parks = Surfaces.parks.rasterstats_from_file(
+    #     path,
+    #     '/home/arstneio/Downloads/shadows/test/winter/',
+    #     zoom=16,
+    #     # threshold=.25
+    # )
+    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
     t = time.time()
     networks = Surfaces.networks.driving.rasterstats_from_file(
         path,
