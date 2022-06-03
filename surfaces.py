@@ -11,6 +11,7 @@ from weakref import WeakKeyDictionary
 
 import geopandas as gpd
 import numpy as np
+import rasterio
 import rasterstats
 import shapely.geometry.base
 from geopandas import GeoDataFrame
@@ -222,7 +223,7 @@ class DescriptorParks(osmium.SimpleHandler):
             file: str,
             shadow_dir: str,
             zoom: int,
-            threshold: float,
+            threshold: list[float],
             stats: list[str],
     ) -> GeoDataFrame:
         if '.' not in file:
@@ -291,7 +292,7 @@ class DescriptorParks(osmium.SimpleHandler):
             files: list[str],
             shadow_dir: str,
             zoom: int,
-            threshold: float,
+            threshold: list[float],
             stats: list[str],
     ) -> Iterator[GeoDataFrame]:
         sources = (
@@ -333,7 +334,7 @@ class DescriptorParks(osmium.SimpleHandler):
             files: Union[str, list[str]],
             shadow_dir: str,
             zoom: int,
-            threshold: float = 0.0,
+            threshold: list[float] = [0.0, 1.0],
             stats: Collection[str] = tuple('min max mean sum median nodata'.split())
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
@@ -364,7 +365,7 @@ class DescriptorNetwork:
             file: str,
             shadow_dir: str,
             zoom: int,
-            threshold: float,
+            threshold: list[float],
             stats: list[str],
     ) -> GeoDataFrame:
         """

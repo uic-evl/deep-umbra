@@ -13,6 +13,7 @@ import os
 import math
 
 import pyproj
+import rasterio
 
 import cv2
 import numpy as np
@@ -137,7 +138,7 @@ def get_shadow_image(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: float = 0.0,
+        threshold: list[float] = [0.0, 1.0],
 ) -> np.ndarray:
     # Note: python 3.9 glob.glob() does not have kwarg root_dir
     tw, tn = deg2num(gw, gn, zoom, True)
@@ -198,9 +199,9 @@ def get_shadow_image(
     raster = np.zeros((256 * r_tilecount, 256 * c_tilecount), dtype=np.uint8)
     for (xtile, ytile), image in zip(xtiles_ytiles, images):
         raster[rslices[ytile], cslices[xtile]] = image
-    if threshold > 0:
+    if threshold[0] > 0 and threshold[1] < 1.0:
         cutoff = math.ceil(threshold * 255)
-        raster[np.logical_and(0 <= raster, raster < cutoff)] = 0
+        raster[np.logical_or(raster < threshold[0], raster > threshold[1])] = -1
         # raster[0 <= raster < cutoff] = 0    # because -1 is currently our nodata
     return raster
 
@@ -212,7 +213,7 @@ def get_raster_path(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: float = 0.0,
+        threshold: list[float] = [0.0,1.0],
         outdir: str = None,
 ) -> str:
     tw, tn = deg2num(gw, gn, zoom, True)
@@ -266,7 +267,7 @@ def get_raster_affine(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: float = 0.0,
+        threshold: list[float] = [0.0,1.0],
 ) -> tuple[np.ndarray, tuple]:
     "Returns the array and the Affnie transformation"
     tw, tn = deg2num(gw, gn, zoom, True)
