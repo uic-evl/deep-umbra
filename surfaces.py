@@ -572,21 +572,21 @@ if __name__ == '__main__':
         osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
         bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
     )
-    t = time.time()
-    parks = Surfaces.parks.rasterstats_from_file(
-        path,
-        '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
-        # threshold=.25
-    )
-    print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
-
     # t = time.time()
-    # networks = Surfaces.networks.driving.rasterstats_from_file(
+    # parks = Surfaces.parks.rasterstats_from_file(
     #     path,
     #     '/home/arstneio/Downloads/shadows/test/winter/',
     #     zoom=16,
     #     # threshold=.25
     # )
-    # print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
-    # print()
+    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+
+    t = time.time()
+    networks = Surfaces.networks.driving.rasterstats_from_file(
+        path,
+        '/home/arstneio/Downloads/shadows/test/winter/',
+        zoom=16,
+        # threshold=.25
+    )
+    print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
+    print()
