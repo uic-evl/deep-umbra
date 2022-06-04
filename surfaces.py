@@ -113,16 +113,16 @@ def gen_zonal_stats(
 
     # chain = itertools.chain.from_iterable(map(dict.values, gen))
 
-    # # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
-    def assertion() -> Iterator[Iterable[float]]:
-        for output in gen:
-            assert all(a == b for a, b in zip(output.keys(), stats))
-            yield from output.values()
-            # yield output.values()
-
-    chain = assertion()
-
-    # chain = itertools.chain.from_iterable(map(dict.values, gen))
+    # # # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
+    # def assertion() -> Iterator[Iterable[float]]:
+    #     for output in gen:
+    #         assert all(a == b for a, b in zip(output.keys(), stats))
+    #         yield from output.values()
+    #         # yield output.values()
+    #
+    # chain = assertion()
+    #
+    chain = itertools.chain.from_iterable(map(dict.values, gen))
 
     arr = np.fromiter(chain, dtype=np.float64, count=rows * columns)
     # arr /= 255
