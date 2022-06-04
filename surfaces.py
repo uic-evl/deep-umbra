@@ -286,7 +286,7 @@ class DescriptorParks(osmium.SimpleHandler):
         )
         result['name'] = Series.astype(result['name'], 'string')
         result['nodata'] *= 255
-        result['nodata'] = result['nodata'].astype('Int32')
+        # result['nodata'] = result['nodata'].astype('Int32')
         return result
 
     @_rasterstats_from_file.register(list)
@@ -440,7 +440,7 @@ class DescriptorNetwork:
         )
         result['name'] = Series.astype(result['name'], 'string')
         result['nodata'] *= 255
-        result['nodata'] = result['nodata'].astype('Int32')
+        # result['nodata'] = result['nodata'].astype('Int32')
         return result
 
     @_rasterstats_from_file.register(list)
