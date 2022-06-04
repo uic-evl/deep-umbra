@@ -1,3 +1,4 @@
+import abc
 import time
 
 from util_raster import get_utm_from_lon_lat, get_raster_path, get_raster_affine
@@ -89,7 +90,7 @@ def gen_zonal_stats(
         interface: Union[dict, GeoSeries, GeoDataFrame, str],
         raster: str,
         # stats: list[str],
-        **kwargs
+        # **kwargs
 ) -> np.ndarray:
     """
     :param interface: dict with 'features' key OR geopandas object OR shapely file path
@@ -105,23 +106,24 @@ def gen_zonal_stats(
         interface,
         raster,
         stats=stats,
+        # stats=stats,
         # nodata=0,
         # nodata=-1,
-        **kwargs
+        # **kwargs
     )
 
     # chain = itertools.chain.from_iterable(map(dict.values, gen))
 
-    # # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
-    def assertion() -> Iterator[Iterable[float]]:
-        for output in gen:
-            assert all(a == b for a, b in zip(output.keys(), stats))
-            yield from output.values()
-            # yield output.values()
-
-    chain = assertion()
-
-    # chain = itertools.chain.from_iterable(map(dict.values, gen))
+    # # # I am assuming that the output dict keys match the order of stats however I am not sure I have this guarantee
+    # def assertion() -> Iterator[Iterable[float]]:
+    #     for output in gen:
+    #         assert all(a == b for a, b in zip(output.keys(), stats))
+    #         yield from output.values()
+    #         # yield output.values()
+    #
+    # chain = assertion()
+    #
+    chain = itertools.chain.from_iterable(map(dict.values, gen))
 
     arr = np.fromiter(chain, dtype=np.float64, count=rows * columns)
     # arr /= 255
@@ -129,7 +131,113 @@ def gen_zonal_stats(
     return arr
 
 
-class DescriptorParks(osmium.SimpleHandler):
+class RasterStats:
+    @classmethod
+    def _rasterstats_from_file(
+            cls,
+            file: str,
+            shadow_dir: str,
+            zoom: int,
+            threshold: tuple[float, float],
+            raster: Optional[str],
+    ) -> GeoDataFrame:
+        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
+        if '.' not in file:
+            file = pyrosm.get_data(file)
+        surfaces = Surfaces(file, shadow_dir)
+        parks = surfaces.parks
+        gdf = parks.gdf
+        raster = get_raster_path(
+            *gdf.total_bounds,
+            zoom=zoom,
+            basedir=shadow_dir,
+            threshold=threshold,
+            outpath=raster
+        )
+
+        # Some geometry can be None and rasterstats will raise an exception
+        loc = gdf['geometry'].notna()
+        geometry: GeoSeries = gdf.loc[loc, 'geometry']
+
+        step = math.ceil(len(geometry) / multiprocessing.cpu_count())
+        slices = [
+            slice(l, l + step)
+            for l in range(0, len(geometry), step)
+        ]
+        interfaces = [
+            getattr(geometry.iloc[s], '__geo_interface__')
+            for s in slices
+        ]
+
+        with concurrent.futures.ThreadPoolExecutor() as threads:
+            results = threads.map(gen_zonal_stats, interfaces, itertools.repeat(raster))#, itertools.repeat(stats))
+            results = list(results)
+        arr = np.concatenate(results)
+
+        columns = {
+            stat: arr[:, i]
+            for i, stat in enumerate(stats)
+        }
+
+        centroid: shapely.geometry.Point = geometry.iloc[0].centroid
+        lon = centroid.x
+        lat = centroid.y
+        crs = get_utm_from_lon_lat(lon, lat)
+        area = (
+            geometry.to_crs(crs)
+                .area
+                .values
+        )
+        columns['area'] = area
+        columns['name'] = gdf.loc[loc, 'name'].values
+
+        result = GeoDataFrame(
+            columns,
+            index=gdf.index,
+            crs=gdf.crs,
+            geometry=geometry.values
+        )
+        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
+        normalize = set('min max mean sum median'.split())
+        asint = {'nodata', 'count'}
+        for stat in stats:
+            if stat in normalize:
+                result[stat] = result[stat] / 255
+            elif stat in asint:
+                result[stat] = result[stat].astype('UInt64')
+
+        result['name'] = Series.astype(result['name'], 'string')
+        return result
+
+
+    @classmethod
+    def rasterstats_from_file(
+            cls,
+            file: Union[str, list[str]],
+            shadow_dir: str,
+            zoom: int,
+            threshold: tuple[float, float] = (0.0, 1.0),
+            raster: Optional[str] = None,
+    ) -> GeoDataFrame:
+        """
+        :param file: .pbf file or pyrosm source
+        :param shadow_dir: directory of all shadow xtiles and ytiles
+        :param zoom: slippy map zoom
+        :param threshold: cut-off threshold for array values
+        :param raster: optional raster file that will be used instead of generating a raster for the file
+        :return: GeoDataFrame
+            geometry as original lines, even though the area is a 4m buffer
+        """
+        return cls._rasterstats_from_file(
+            file,
+            shadow_dir=shadow_dir,
+            zoom=zoom,
+            threshold=threshold,
+            raster=raster,
+        )
+
+
+class DescriptorParks(osmium.SimpleHandler, RasterStats):
     wkbfab = osmium.geom.WKBFactory()
 
     def __init__(self):
@@ -221,156 +329,11 @@ class DescriptorParks(osmium.SimpleHandler):
     def gdf(self):
         del self._cache[self._instance]
 
-    @functools.singledispatchmethod
-    @classmethod
-    def _rasterstats_from_file(
-            cls,
-            file: str,
-            shadow_dir: str,
-            zoom: int,
-            threshold: tuple[float, float],
-            stats: list[str],
-    ) -> GeoDataFrame:
-        if '.' not in file:
-            file = pyrosm.get_data(file)
-        surfaces = Surfaces(file, shadow_dir)
-        parks = surfaces.parks
-        gdf = parks.gdf
-        raster = get_raster_path(
-            *gdf.total_bounds,
-            zoom=zoom,
-            basedir=shadow_dir,
-            threshold=threshold,
-        )
-
-        # Some geometry can be None and rasterstats will raise an exception
-        loc = gdf['geometry'].notna()
-        geometry: GeoSeries = gdf.loc[loc, 'geometry']
-
-        step = math.ceil(len(geometry) / multiprocessing.cpu_count())
-        slices = [
-            slice(l, l + step)
-            for l in range(0, len(geometry), step)
-        ]
-        interfaces = [
-            getattr(geometry.iloc[s], '__geo_interface__')
-            for s in slices
-        ]
-
-        with concurrent.futures.ThreadPoolExecutor() as threads:
-            results = threads.map(gen_zonal_stats, interfaces, itertools.repeat(raster))#, itertools.repeat(stats))
-            results = list(results)
-        arr = np.concatenate(results)
-
-        columns = {
-            stat: arr[:, i]
-            for i, stat in enumerate(stats)
-        }
-
-        centroid: shapely.geometry.Point = geometry.iloc[0].centroid
-        lon = centroid.x
-        lat = centroid.y
-        crs = get_utm_from_lon_lat(lon, lat)
-        area = (
-            geometry.to_crs(crs)
-                .area
-                .values
-        )
-        columns['area'] = area
-        columns['name'] = gdf.loc[loc, 'name'].values
-
-        result = GeoDataFrame(
-            columns,
-            index=gdf.index,
-            crs=gdf.crs,
-            geometry=geometry.values
-        )
-        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
-        normalize = set('min max mean sum median'.split())
-        asint = {'nodata', 'count'}
-        for stat in stats:
-            if stat in normalize:
-                result[stat] = result[stat] / 255
-            elif stat in asint:
-                result[stat] = result[stat].astype('UInt64')
-
-        result['name'] = Series.astype(result['name'], 'string')
-        return result
-
-    @_rasterstats_from_file.register(list)
-    @classmethod
-    def _(
-            cls,
-            files: list[str],
-            shadow_dir: str,
-            zoom: int,
-            threshold: tuple[float, float],
-            stats: list[str],
-    ) -> Iterator[GeoDataFrame]:
-        sources = (
-            file.rpartition(os.sep)[2]
-            if os.sep in file
-            else file
-            for file in files
-        )
-        sources = (
-            source.rpartition('.')[0]
-            if '.' in source
-            else source
-            for source in sources
-        )
-        to_get = (
-            file
-            for file in files
-            if '.' not in file
-        )
-        files = [
-            file
-            for file in files
-            if '.' in file
-        ]
-        with concurrent.futures.ThreadPoolExecutor() as threads:
-            files.extend(threads.map(pyrosm.get_data, to_get))
-
-        for source, file in zip(sources, files):
-            parks: GeoDataFrame = Surfaces.parks._rasterstats_from_file(file, shadow_dir, zoom, threshold, stats)
-            parks = (
-                parks.assign(source=source)
-                    .set_index('source', append=True)
-            )
-            yield parks
-
-    @classmethod
-    def rasterstats_from_file(
-            cls,
-            files: Union[str, list[str]],
-            shadow_dir: str,
-            zoom: int,
-            threshold: tuple[float, float] = (0.0, 1.0),
-            # stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
-    ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
-        """
-        :param files: .pbf files or pyrosm sources
-        :param shadow_dir: directory of all shadow xtiles and ytiles
-        :param zoom: slippy map zoom
-        :param threshold: cut-off threshold for array values
-        :param stats: list of stats to be generated by rasterstats.gen_zonal_stats()
-        :return: GeoDataFrame if files is str, Iterator[GeoDataFrame] if files is list
-            geometry as original lines, even though the area is a 4m buffer
-        """
-        return cls._rasterstats_from_file(
-            files,
-            shadow_dir=shadow_dir,
-            zoom=zoom,
-            threshold=threshold,
-            # stats=stats,
-        )
 
 
-class DescriptorNetwork:
+class DescriptorNetwork(abc.ABC, RasterStats):
     network_type: str
 
-    @functools.singledispatchmethod
     @classmethod
     def _rasterstats_from_file(
             cls,
@@ -378,15 +341,8 @@ class DescriptorNetwork:
             shadow_dir: str,
             zoom: int,
             threshold: tuple[float, float],
-            stats: list[str],
+            raster: Optional[str],
     ) -> GeoDataFrame:
-        """
-
-        :param file:
-        :param shadow_dir:
-        :param zoom:
-        :return: GeoDataFrame, with parks as Lines, although the area is from a 4m buffer
-        """
         if '.' not in file:
             file = pyrosm.get_data(file)
         surfaces = Surfaces(file, shadow_dir)
@@ -414,6 +370,7 @@ class DescriptorNetwork:
             zoom=zoom,
             basedir=shadow_dir,
             threshold=threshold,
+            outpath=raster,
         )
 
         step = math.ceil(len(geometry) / multiprocessing.cpu_count())
@@ -426,13 +383,13 @@ class DescriptorNetwork:
             for s in slices
         ]
 
-        print('here')
         with concurrent.futures.ThreadPoolExecutor() as threads:
             results = threads.map(gen_zonal_stats, interfaces, itertools.repeat(raster))#, itertools.repeat(stats))
             results = list(results)
 
         arr = np.concatenate(results)
 
+        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
         columns = {
             stat: arr[:, i]
             for i, stat in enumerate(stats)
@@ -447,7 +404,6 @@ class DescriptorNetwork:
             crs=gdf.crs,
             geometry=geometry.values
         )
-        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
         normalize = set('min max mean sum median'.split())
         asint = {'nodata', 'count'}
         for stat in stats:
@@ -458,67 +414,6 @@ class DescriptorNetwork:
 
         result['name'] = Series.astype(result['name'], 'string')
         return result
-
-    @_rasterstats_from_file.register(list)
-    @classmethod
-    def _(cls, files: list[str], shadow_dir: str, zoom: int) -> Iterator[GeoDataFrame]:
-        sources = (
-            file.rpartition(os.sep)[2]
-            if os.sep in file
-            else file
-            for file in files
-        )
-        sources = (
-            source.rpartition('.')[0]
-            if '.' in source
-            else source
-            for source in sources
-        )
-        to_get = (
-            file
-            for file in files
-            if '.' not in file
-        )
-        files = [
-            file
-            for file in files
-            if '.' in file
-        ]
-        with concurrent.futures.ThreadPoolExecutor() as threads:
-            files.extend(threads.map(pyrosm.get_data, to_get))
-
-        for source, file in zip(sources, files):
-            parks: GeoDataFrame = Surfaces.parks._rasterstats_from_file(file, shadow_dir, zoom)
-            parks = (
-                parks.assign(source=source)
-                    .set_index('source', append=True)
-            )
-            yield parks
-
-    @classmethod
-    def rasterstats_from_file(
-            cls,
-            files: Union[str, list[str]],
-            shadow_dir: str,
-            zoom: int,
-            threshold: tuple[float, float] = (0.0, 1.0),
-            stats: Collection[str] = tuple('min max mean count sum median nodata'.split()),
-    ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
-        """
-        :param files: .pbf files or pyrosm sources
-        :param shadow_dir: directory of all shadow xtiles and ytiles
-        :param zoom: slippy map zoom
-        :param threshold: between 0 and 1, cut-off threshold for array values
-        :param stats: list of stats to be generated by rasterstats.gen_zonal_stats()
-        :return: GeoDataFrame if files is str, Iterator[GeoDataFrame] if files is list
-        """
-        return cls._rasterstats_from_file(
-            files,
-            shadow_dir=shadow_dir,
-            zoom=zoom,
-            threshold=threshold,
-            stats=stats,
-        )
 
     def __get__(self, instance: 'DescriptorNetworks', owner: Type['DescriptorNetworks']):
         self._instance = instance
@@ -671,25 +566,27 @@ class Surfaces:
 
 
 if __name__ == '__main__':
+    print('surfaces')
     path = pyrosm_extract(
         'newyorkcity',
         osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
         bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
     )
-    # t = time.time()
-    # parks = Surfaces.parks.rasterstats_from_file(
-    #     path,
-    #     '/home/arstneio/Downloads/shadows/test/winter/',
-    #     zoom=16,
-    #     # threshold=.25
-    # )
-    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
     t = time.time()
-    networks = Surfaces.networks.driving.rasterstats_from_file(
+    parks = Surfaces.parks.rasterstats_from_file(
         path,
         '/home/arstneio/Downloads/shadows/test/winter/',
         zoom=16,
         # threshold=.25
     )
-    print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
-    print()
+    print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+
+    # t = time.time()
+    # networks = Surfaces.networks.driving.rasterstats_from_file(
+    #     path,
+    #     '/home/arstneio/Downloads/shadows/test/winter/',
+    #     zoom=16,
+    #     # threshold=.25
+    # )
+    # print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
+    # print()
