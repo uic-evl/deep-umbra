@@ -339,7 +339,7 @@ class DescriptorParks(osmium.SimpleHandler):
             shadow_dir: str,
             zoom: int,
             threshold: tuple[float, float] = (0.0, 1.0),
-            stats: Collection[str] = tuple('min max mean sum median nodata'.split())
+            stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
         :param files: .pbf files or pyrosm sources
@@ -486,7 +486,7 @@ class DescriptorNetwork:
             shadow_dir: str,
             zoom: int,
             threshold: tuple[float, float] = (0.0, 1.0),
-            stats: Collection[str] = tuple('min max mean sum median nodata'.split()),
+            stats: Collection[str] = tuple('min max mean count sum median nodata'.split()),
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
         :param files: .pbf files or pyrosm sources
