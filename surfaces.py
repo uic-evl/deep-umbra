@@ -147,13 +147,13 @@ class RasterStats:
         surfaces = Surfaces(file, shadow_dir)
         parks = surfaces.parks
         gdf = parks.gdf
-        if raster is None:
-            raster = get_raster_path(
-                *gdf.total_bounds,
-                zoom=zoom,
-                basedir=shadow_dir,
-                threshold=threshold,
-            )
+        raster = get_raster_path(
+            *gdf.total_bounds,
+            zoom=zoom,
+            basedir=shadow_dir,
+            threshold=threshold,
+            outpath=raster
+        )
 
         # Some geometry can be None and rasterstats will raise an exception
         loc = gdf['geometry'].notna()
@@ -218,14 +218,14 @@ class RasterStats:
             zoom: int,
             threshold: tuple[float, float] = (0.0, 1.0),
             raster: Optional[str] = None,
-    ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
+    ) -> GeoDataFrame:
         """
         :param file: .pbf file or pyrosm source
         :param shadow_dir: directory of all shadow xtiles and ytiles
         :param zoom: slippy map zoom
         :param threshold: cut-off threshold for array values
         :param raster: optional raster file that will be used instead of generating a raster for the file
-        :return: GeoDataFrame if files is str, Iterator[GeoDataFrame] if files is list
+        :return: GeoDataFrame
             geometry as original lines, even though the area is a 4m buffer
         """
         return cls._rasterstats_from_file(
@@ -365,13 +365,13 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         area = buffer.area
         buffer = buffer.to_crs(4326)
 
-        if raster is None:
-            raster = get_raster_path(
-                *buffer.total_bounds,
-                zoom=zoom,
-                basedir=shadow_dir,
-                threshold=threshold,
-            )
+        raster = get_raster_path(
+            *buffer.total_bounds,
+            zoom=zoom,
+            basedir=shadow_dir,
+            threshold=threshold,
+            outpath=raster,
+        )
 
         step = math.ceil(len(geometry) / multiprocessing.cpu_count())
         slices = [
