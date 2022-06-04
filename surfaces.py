@@ -257,8 +257,8 @@ class DescriptorParks(osmium.SimpleHandler):
             for s in slices
         ]
 
-        with concurrent.futures.ProcessPoolExecutor() as processes:
-            results = processes.map(gen_zonal_stats, interfaces, itertools.repeat(raster), itertools.repeat(stats))
+        with concurrent.futures.ThreadPoolExecutor() as threads:
+            results = threads.map(gen_zonal_stats, interfaces, itertools.repeat(raster))#, itertools.repeat(stats))
             results = list(results)
         arr = np.concatenate(results)
 
@@ -426,8 +426,9 @@ class DescriptorNetwork:
             for s in slices
         ]
 
-        with concurrent.futures.ProcessPoolExecutor() as processes:
-            results = processes.map(gen_zonal_stats, interfaces, itertools.repeat(raster), itertools.repeat(stats))
+        print('here')
+        with concurrent.futures.ThreadPoolExecutor() as threads:
+            results = threads.map(gen_zonal_stats, interfaces, itertools.repeat(raster))#, itertools.repeat(stats))
             results = list(results)
 
         arr = np.concatenate(results)
