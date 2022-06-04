@@ -88,7 +88,7 @@ def _(
 def gen_zonal_stats(
         interface: Union[dict, GeoSeries, GeoDataFrame, str],
         raster: str,
-        stats: list[str],
+        # stats: list[str],
         **kwargs
 ) -> np.ndarray:
     """
@@ -98,6 +98,7 @@ def gen_zonal_stats(
     :param kwargs: kwargs to pass to rasterstats.gen_zonal_stats()
     :return: np.ndarray
     """
+    stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
     rows = len(interface['features'])
     columns = len(stats)
     gen = rasterstats.gen_zonal_stats(
@@ -123,7 +124,7 @@ def gen_zonal_stats(
     # chain = itertools.chain.from_iterable(map(dict.values, gen))
 
     arr = np.fromiter(chain, dtype=np.float64, count=rows * columns)
-    arr /= 255
+    # arr /= 255
     arr = arr.reshape((rows, columns))
     return arr
 
@@ -284,9 +285,16 @@ class DescriptorParks(osmium.SimpleHandler):
             crs=gdf.crs,
             geometry=geometry.values
         )
+        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
+        normalize = set('min max mean sum median'.split())
+        asint = {'nodata', 'count'}
+        for stat in stats:
+            if stat in normalize:
+                result[stat] = result[stat] / 255
+            elif stat in asint:
+                result[stat] = result[stat].astype('UInt64')
+
         result['name'] = Series.astype(result['name'], 'string')
-        result['nodata'] *= 255
-        # result['nodata'] = result['nodata'].astype('Int32')
         return result
 
     @_rasterstats_from_file.register(list)
@@ -339,7 +347,7 @@ class DescriptorParks(osmium.SimpleHandler):
             shadow_dir: str,
             zoom: int,
             threshold: tuple[float, float] = (0.0, 1.0),
-            stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
+            # stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
     ) -> Union[GeoDataFrame, Iterator[GeoDataFrame]]:
         """
         :param files: .pbf files or pyrosm sources
@@ -355,7 +363,7 @@ class DescriptorParks(osmium.SimpleHandler):
             shadow_dir=shadow_dir,
             zoom=zoom,
             threshold=threshold,
-            stats=stats,
+            # stats=stats,
         )
 
 
@@ -434,13 +442,20 @@ class DescriptorNetwork:
 
         result = GeoDataFrame(
             columns,
-            index=geometry.index,
+            index=gdf.index,
             crs=gdf.crs,
             geometry=geometry.values
         )
+        stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
+        normalize = set('min max mean sum median'.split())
+        asint = {'nodata', 'count'}
+        for stat in stats:
+            if stat in normalize:
+                result[stat] = result[stat] / 255
+            elif stat in asint:
+                result[stat] = result[stat].astype('UInt64')
+
         result['name'] = Series.astype(result['name'], 'string')
-        result['nodata'] *= 255
-        # result['nodata'] = result['nodata'].astype('Int32')
         return result
 
     @_rasterstats_from_file.register(list)
