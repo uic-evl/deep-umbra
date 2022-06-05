@@ -222,6 +222,7 @@ def get_raster_path(
         basedir: str,
         threshold: tuple[float, float] = (0.0, 1.0),
         outdir: str = None,
+        outpath: str = None,
         nodata: int = -1
 ) -> str:
     tw, tn = deg2num(gw, gn, zoom, True)
@@ -229,11 +230,12 @@ def get_raster_path(
     te += 1
     ts += 1
 
-    if outdir is None:
-        outdir = tempfile.gettempdir()
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    outpath = os.path.join(outdir, f'{zoom}_{tw}_{ts}_{te}_{tn}.tif')
+    if outpath is None:
+        if outdir is None:
+            outdir = tempfile.gettempdir()
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+        outpath = os.path.join(outdir, f'{zoom}_{tw}_{ts}_{te}_{tn}.tif')
 
     image = get_shadow_image(
         gw,
