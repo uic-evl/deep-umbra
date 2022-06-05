@@ -25,8 +25,8 @@ def _deg2num(lon_deg, lat_deg,  zoom, always_xy):
     lat_rad = lat_deg * math.pi / 180.0
 
     n = 2 ** zoom
-    xtile = ((lon_deg + 180) / 360 * n)
-    ytile = ((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    xtile = int((lon_deg + 180) / 360 * n)
+    ytile = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
     if always_xy:
         return xtile, ytile
     else:
@@ -149,6 +149,10 @@ def get_shadow_image(
 
     r_tilecount = len(ytiles)
     c_tilecount = len(xtiles)
+
+    print(r_tilecount)
+    print(c_tilecount)
+    exit(0)
 
     cslices = {
         xtile: slice(l, l + 256)
