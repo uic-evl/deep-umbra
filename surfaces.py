@@ -279,9 +279,13 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
             self.name[id] = tags['name']
 
     def apply_file(self, filename, locations=False, idx='flex_mem'):
-        for item in self.__dict__:
-            if isinstance(item, dict):
-                item.clear()
+        for key, value in self.__dict__.items():
+            if not key.startswith('_') and isinstance(value, dict):
+                value.clear()
+        # for item in self.__dict__:
+        #     if not item.startswith('_') and isinstance(sel)
+        #     # if isinstance(item, dict):
+        #     #     item.clear()
         super(DescriptorParks, self).apply_file(filename, locations, idx)
 
     def __get__(self, instance: 'Surfaces', owner: Type['Surfaces']) -> 'DescriptorParks':
@@ -567,26 +571,32 @@ class Surfaces:
 
 if __name__ == '__main__':
     print('surfaces')
-    path = pyrosm_extract(
-        'newyorkcity',
-        osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
-        bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
+    # path = pyrosm_extract(
+    #     'newyorkcity',
+    #     osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
+    #     bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
+    # )
+    t = time.time()
+    parks = Surfaces.parks.rasterstats_from_file(
+        '/home/arstneio/Downloads/abu.osm.pbf',
+        '/home/arstneio/Downloads/shadows/test/winter/',
+        zoom=16,
+        # threshold=.25
     )
+    print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+    parks = Surfaces.parks.rasterstats_from_file(
+        '/home/arstneio/Downloads/ams.osm.pbf',
+        '/home/arstneio/Downloads/shadows/test/winter/',
+        zoom=16,
+        # threshold=.25
+    )
+    print()
     # t = time.time()
-    # parks = Surfaces.parks.rasterstats_from_file(
+    # networks = Surfaces.networks.driving.rasterstats_from_file(
     #     path,
     #     '/home/arstneio/Downloads/shadows/test/winter/',
     #     zoom=16,
     #     # threshold=.25
     # )
-    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
-
-    t = time.time()
-    networks = Surfaces.networks.driving.rasterstats_from_file(
-        path,
-        '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
-        # threshold=.25
-    )
-    print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
-    print()
+    # print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
+    # print()
