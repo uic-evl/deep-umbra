@@ -168,10 +168,6 @@ def get_shadow_image(
     r_tilecount = len(ytiles)
     c_tilecount = len(xtiles)
 
-    print(r_tilecount)
-    print(c_tilecount)
-    exit(0)
-
     cslices = {
         xtile: slice(l, l + 256)
         for l, xtile in zip(range(0, 256 * c_tilecount, 256), xtiles)
