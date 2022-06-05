@@ -20,24 +20,26 @@ import numpy as np
 
 import pyproj.aoi
 
-def _deg2num(lon_deg, lat_deg,  zoom, always_xy):
+
+def _deg2num(lon_deg, lat_deg, zoom, always_xy):
     # lat_rad = math.radians(lat_deg)
     lat_rad = lat_deg * math.pi / 180.0
 
     n = 2 ** zoom
-    xtile = int((lon_deg + 180) / 360 * n)
-    ytile = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    xtile = ((lon_deg + 180) / 360 * n)
+    ytile = ((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
     if always_xy:
         return xtile, ytile
     else:
         return ytile, xtile
 
+
 def deg2num(
         lon_deg: float,
         lat_deg: float,
         zoom: int,
-        always_xy = True,
-) -> tuple[int, int]:
+        always_xy=True,
+) -> tuple[float, float]:
     """
 
     :param lat_deg:
@@ -46,6 +48,7 @@ def deg2num(
     :return: xtile, ytile
     """
     return _deg2num(lon_deg, lat_deg, zoom, always_xy)
+
 
 def _num2deg(xtile, ytile, zoom, always_xy):
     n = 2 ** zoom
@@ -59,7 +62,8 @@ def _num2deg(xtile, ytile, zoom, always_xy):
         return lat_deg, lon_deg
     # return lat_deg, lon_deg
 
-def num2deg(xtile: float, ytile: float, zoom: int, always_xy = False) -> tuple[float, float]:
+
+def num2deg(xtile: float, ytile: float, zoom: int, always_xy=False) -> tuple[float, float]:
     """
 
     :param xtile:
@@ -69,6 +73,7 @@ def num2deg(xtile: float, ytile: float, zoom: int, always_xy = False) -> tuple[f
     """
     return _num2deg(xtile, ytile, zoom, always_xy)
 
+
 def _xtiles_from_lons(lons, zoom, ):
     length = len(lons)
     n = 2 ** zoom
@@ -77,8 +82,10 @@ def _xtiles_from_lons(lons, zoom, ):
         xtiles[k] = ((lons[k] + 180) / 360 * n)
     return xtiles
 
+
 def xtiles_from_lons(lons: np.ndarray, zoom: int):
     return _xtiles_from_lons(lons, zoom)
+
 
 def _ytiles_from_lats(lons, zoom, ):
     length = len(lons)
@@ -88,8 +95,10 @@ def _ytiles_from_lats(lons, zoom, ):
         ytiles[k] = ((lons[k] + 180) / 360 * n)
     return ytiles
 
+
 def ytiles_from_lats(lats: np.ndarray, zoom: int):
     return _ytiles_from_lats(lats, zoom)
+
 
 def _lons_from_xtiles(xtiles, zoom):
     length = len(xtiles)
@@ -99,8 +108,10 @@ def _lons_from_xtiles(xtiles, zoom):
         lons[k] = 360.0 * xtiles[k] / n - 180
     return lons
 
+
 def lons_from_xtiles(xtiles: np.ndarray, zoom: int):
     return _lons_from_xtiles(xtiles, zoom)
+
 
 def _lats_from_ytiles(ytiles, zoom):
     length = len(ytiles)
@@ -113,8 +124,10 @@ def _lats_from_ytiles(ytiles, zoom):
         )
     return lats
 
+
 def lats_from_ytiles(ytiles: np.ndarray, zoom: int):
     return _lats_from_ytiles(ytiles, zoom)
+
 
 def get_utm_from_lon_lat(lon: float, lat: float) -> pyproj.crs.CRS:
     buffer = .001
@@ -144,15 +157,16 @@ def get_shadow_image(
     tw, tn = deg2num(gw, gn, zoom, True)
     te, ts = deg2num(ge, gs, zoom, True)
 
+    tw = math.floor(tw)
+    tn = math.floor(tn)
+    te = math.floor(te)
+    ts = math.floor(ts)
+
     ytiles = np.arange(tn, ts + 1, dtype=np.uint32)
     xtiles = np.arange(tw, te + 1, dtype=np.uint32)
 
     r_tilecount = len(ytiles)
     c_tilecount = len(xtiles)
-
-    print(r_tilecount)
-    print(c_tilecount)
-    exit(0)
 
     cslices = {
         xtile: slice(l, l + 256)
