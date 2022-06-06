@@ -209,7 +209,6 @@ class RasterStats:
         result['name'] = Series.astype(result['name'], 'string')
         return result
 
-
     @classmethod
     def rasterstats_from_file(
             cls,
@@ -282,9 +281,6 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
         for key, value in self.__dict__.items():
             if not key.startswith('_') and isinstance(value, dict):
                 value.clear()
-        # for item in self.__dict__:
-        #     # if isinstance(item, dict):
-        #     #     item.clear()
         super(DescriptorParks, self).apply_file(filename, locations, idx)
 
     def __get__(self, instance: 'Surfaces', owner: Type['Surfaces']) -> 'DescriptorParks':
@@ -331,7 +327,6 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
     @gdf.deleter
     def gdf(self):
         del self._cache[self._instance]
-
 
 
 class DescriptorNetwork(abc.ABC, RasterStats):
@@ -419,15 +414,16 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         return result
 
     def __get__(self, instance: 'DescriptorNetworks', owner: Type['DescriptorNetworks']):
-        self._instance = instance
+        self._networks = instance
         return self
 
     def _get_network(self) -> tuple[GeoDataFrame, GeoDataFrame]:
-        instance = self._instance
-        osm: pyrosm.OSM = instance._osm[instance._instance]
+        networks = self._networks
+        surfaces = self._networks._surfaces
+        osm: pyrosm.OSM = networks._osm[surfaces]
         # nodes, geometry = osm.get_network(self.network_type, None, True)
         nodes, geometry = None, osm.get_network(self.network_type, None, False)
-        self._bbox[instance] = geometry.total_bounds
+        self._bbox[surfaces] = geometry.total_bounds
 
         nodes: Optional[GeoDataFrame]
         geometry: GeoDataFrame
@@ -442,40 +438,46 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         return nodes, geometry
 
     def __init__(self):
-        self._cache: WeakKeyDictionary[DescriptorNetworks, tuple[GeoDataFrame, GeoDataFrame]] = WeakKeyDictionary()
-        self._bbox: WeakKeyDictionary[DescriptorNetworks, list[float, ...]] = WeakKeyDictionary()
+        ## Note to self: self._instance is an anti-pattern
+        self._cache: WeakKeyDictionary[Surfaces, tuple[GeoDataFrame, GeoDataFrame]] = WeakKeyDictionary()
+        self._bbox: WeakKeyDictionary[Surfaces, list[float, ...]] = WeakKeyDictionary()
 
     @property
     def gdf(self) -> GeoDataFrame:
-        instance = self._instance
-        if instance not in self._cache:
-            self._cache[instance] = self._get_network()
-        return self._cache[instance][1]
+        surfaces = self._networks._surfaces
+        if surfaces not in self._cache:
+            self._cache[surfaces] = self._get_network()
+        return self._cache[surfaces][1]
+        # if instance not in self._cache:
+        #     self._cache[instance] = self._get_network()
+        # return self._cache[instance][1]
 
     @gdf.setter
     def gdf(self, value):
-        nodes, geometry = self._cache[self._instance]
-        self._cache[self._instance] = (nodes, value)
+        surfaces = self._networks._surfaces
+        nodes, geometry = self._cache[surfaces]
+        self._cache[surfaces] = (nodes, value)
 
     @gdf.deleter
     def gdf(self):
-        del self._cache[self._instance]
+        del self._cache[self._networks._surfaces]
 
     @property
     def nodes(self) -> GeoDataFrame:
-        instance = self._instance
-        if instance not in self._cache:
-            self._cache[instance] = self._get_network()
-        return self._cache[instance][0]
+        surfaces = self._networks._surfaces
+        if surfaces not in self._cache:
+            self._cache[surfaces] = self._get_network()
+        return self._cache[surfaces][0]
 
     @nodes.setter
     def nodes(self, value):
-        nodes, geometry = self._cache[self._instance]
-        self._cache[self._instance] = (value, geometry)
+        surfaces = self._networks._surfaces
+        nodes, geometry = self._cache[surfaces]
+        self._cache[surfaces] = (value, geometry)
 
     @nodes.deleter
     def nodes(self):
-        del self._cache[self._instance]
+        del self._cache[self._networks._surfaces]
 
 
 class DescriptorWalkingNetwork(DescriptorNetwork):
@@ -506,13 +508,13 @@ class DescriptorNetworks:
     all = DescriptorAllNetwork()
 
     def __init__(self):
-        self._instance: Optional['Surfaces'] = None
+        self._surfaces: Optional['Surfaces'] = None
         self._osm: WeakKeyDictionary[Surfaces, pyrosm.OSM] = WeakKeyDictionary()
 
     def __get__(self, instance: 'Surfaces', owner):
-        self._instance = instance
+        self._surfaces = instance
         if instance is not None and instance not in self._osm:
-            self._osm[instance] = pyrosm.OSM(self._instance._file)
+            self._osm[instance] = pyrosm.OSM(self._surfaces._file)
             # TODO: Use bounding box, generate raster
         return self
 
@@ -570,26 +572,46 @@ class Surfaces:
 
 if __name__ == '__main__':
     print('surfaces')
-    # path = pyrosm_extract(
-    #     'newyorkcity',
-    #     osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
-    #     bbox=[40.6986519312932, -74.04222185978449, 40.800217630179155, -73.92257387648877],
-    # )
-    t = time.time()
-    parks = Surfaces.parks.rasterstats_from_file(
-        '/home/arstneio/Downloads/abu.osm.pbf',
+    chicago = pyrosm_extract(
+        'chicago',
+        osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
+        bbox=[41.865140845410046, -87.634181491039, 41.88789218539278, -87.61083554343192],
+    )
+    sao_res = Surfaces.networks.driving.rasterstats_from_file(
+        chicago,
+            '/home/arstneio/Downloads/shadows/test/winter/',
+        zoom=16,
+    )
+    print(sao_res.total_bounds)
+
+    london = pyrosm_extract(
+        'london',
+        osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
+        bbox=[51.48810230578064, -0.02620147457317379, 51.50680415101511, 0.0001485471745494128],
+    )
+    l_res = Surfaces.networks.driving.rasterstats_from_file(
+        london,
         '/home/arstneio/Downloads/shadows/test/winter/',
         zoom=16,
-        # threshold=.25
     )
-    print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
-    parks = Surfaces.parks.rasterstats_from_file(
-        '/home/arstneio/Downloads/ams.osm.pbf',
-        '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
-        # threshold=.25
-    )
+    print(l_res.total_bounds)
     print()
+
+    # t = time.time()
+    # parks = Surfaces.networks.rasterstats_from_file(
+    #     '/home/arstneio/Downloads/abu.osm.pbf',
+    #     '/home/arstneio/Downloads/shadows/test/winter/',
+    #     zoom=16,
+    #     # threshold=.25
+    # )
+    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+    # parks = Surfaces.parks.rasterstats_from_file(
+    #     '/home/arstneio/Downloads/ams.osm.pbf',
+    #     '/home/arstneio/Downloads/shadows/test/winter/',
+    #     zoom=16,
+    #     # threshold=.25
+    # )
+    # print()
     # t = time.time()
     # networks = Surfaces.networks.driving.rasterstats_from_file(
     #     path,
