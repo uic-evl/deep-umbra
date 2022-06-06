@@ -283,7 +283,6 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
             if not key.startswith('_') and isinstance(value, dict):
                 value.clear()
         # for item in self.__dict__:
-        #     if not item.startswith('_') and isinstance(sel)
         #     # if isinstance(item, dict):
         #     #     item.clear()
         super(DescriptorParks, self).apply_file(filename, locations, idx)
