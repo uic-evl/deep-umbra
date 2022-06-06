@@ -193,7 +193,7 @@ class RasterStats:
 
         result = GeoDataFrame(
             columns,
-            index=gdf.index,
+            index=geometry.index,
             crs=gdf.crs,
             geometry=geometry.values
         )
