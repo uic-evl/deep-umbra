@@ -156,8 +156,11 @@ class RasterStats:
         )
 
         # Some geometry can be None and rasterstats will raise an exception
-        loc = gdf['geometry'].notna()
-        geometry: GeoSeries = gdf.loc[loc, 'geometry']
+        # loc = gdf['geometry'].notna()
+        # geometry: GeoSeries = gdf.loc[loc, 'geometry']
+        gdf = gdf[gdf['geometry'].notna()]
+        geometry = gdf.geometry
+
 
         step = math.ceil(len(geometry) / multiprocessing.cpu_count())
         slices = [
@@ -174,7 +177,7 @@ class RasterStats:
             results = list(results)
         arr = np.concatenate(results)
 
-        columns = {
+        data = {
             stat: arr[:, i]
             for i, stat in enumerate(stats)
         }
@@ -188,14 +191,14 @@ class RasterStats:
                 .area
                 .values
         )
-        columns['area'] = area
-        columns['name'] = gdf.loc[loc, 'name'].values
+        data['area'] = area
+        data['name'] = gdf['name'].values
 
         result = GeoDataFrame(
-            columns,
-            index=geometry.index,
+            data=data,
+            index=gdf.index,
             crs=gdf.crs,
-            geometry=geometry.values
+            geometry=gdf.geometry,
         )
         stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
         normalize = set('min max mean sum median'.split())
@@ -204,7 +207,7 @@ class RasterStats:
             if stat in normalize:
                 result[stat] = result[stat] / 255
             elif stat in asint:
-                result[stat] = result[stat].astype('UInt64')
+                result[stat] = result[stat].astype('Int64')
 
         result['name'] = Series.astype(result['name'], 'string')
         return result
@@ -284,7 +287,7 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
         super(DescriptorParks, self).apply_file(filename, locations, idx)
 
     def __get__(self, instance: 'Surfaces', owner: Type['Surfaces']) -> 'DescriptorParks':
-        self._instance = instance
+        self._surfaces = instance
         return self
 
     def __set__(self, instance, value):
@@ -295,9 +298,9 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
 
     @property
     def gdf(self) -> GeoDataFrame:
-        instance = self._instance
-        if instance not in self._cache:
-            self.apply_file(instance._file, locations=True)
+        surfaces = self._surfaces
+        if surfaces not in self._cache:
+            self.apply_file(surfaces._file, locations=True)
             index = np.fromiter(self.geometry.keys(), dtype=np.uint64, count=len(self.geometry))
             geometry = GeoSeries.from_wkb(list(self.geometry.values()), index=index)
 
@@ -316,21 +319,23 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
                 'way': ways,
             }, crs=4326, geometry=geometry)
             gdf.loc[gdf['way'].isna(), 'way'] = False
-            self.__set__(instance, gdf)
+            self.__set__(surfaces, gdf)
             return gdf
-        return self._cache[instance]
+        return self._cache[surfaces]
 
     @gdf.setter
     def gdf(self, value):
-        self._cache[self._instance] = value
+        self._cache[self._surfaces] = value
 
     @gdf.deleter
     def gdf(self):
-        del self._cache[self._instance]
+        del self._cache[self._surfaces]
 
 
 class DescriptorNetwork(abc.ABC, RasterStats):
     network_type: str
+
+
 
     @classmethod
     def _rasterstats_from_file(
@@ -348,8 +353,11 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         gdf = network.gdf
 
         # Some geometry can be None and rasterstats will raise an exception
-        loc = gdf.geometry.notna()
-        geometry: GeoSeries = gdf.loc[loc, 'geometry']
+        # This was a significant slip-up. I should have just dropped the NA geometries from the entire GDF
+        # loc = gdf.geometry.notna()
+        # geometry: GeoSeries = gdf.loc[loc, 'geometry']
+        gdf: GeoDataFrame = gdf[gdf.geometry.notna()]
+        geometry = gdf.geometry
 
         # We are working with lines so we are buffering each line by 4 meters, which is about a car lane
         centroid: shapely.geometry.Point = gdf.geometry.iloc[0].centroid
@@ -394,7 +402,7 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         }
 
         columns['area'] = area
-        columns['name'] = gdf.loc[loc, 'name'].values
+        columns['name'] = gdf['name']
 
         result = GeoDataFrame(
             columns,
@@ -408,7 +416,7 @@ class DescriptorNetwork(abc.ABC, RasterStats):
             if stat in normalize:
                 result[stat] = result[stat] / 255
             elif stat in asint:
-                result[stat] = result[stat].astype('UInt64')
+                result[stat] = result[stat].astype('Int64')
 
         result['name'] = Series.astype(result['name'], 'string')
         return result
@@ -435,6 +443,7 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         loc = pd.Series.isin(geometry['tunnel'], {'passage', 'yes', 'building_passage', 'covered'})
         geometry = geometry.loc[~loc]
         geometry = geometry.drop('tunnel', axis=1)
+        geometry = geometry.set_index('id')
         return nodes, geometry
 
     def __init__(self):
@@ -515,7 +524,6 @@ class DescriptorNetworks:
         self._surfaces = instance
         if instance is not None and instance not in self._osm:
             self._osm[instance] = pyrosm.OSM(self._surfaces._file)
-            # TODO: Use bounding box, generate raster
         return self
 
 
@@ -535,6 +543,10 @@ class Surfaces:
         :param files: list of .feather files that will be concatenated for comparison across cities
         :return:    DataFrame, with the indices, sum, and weighted sums of each entry
         """
+        names = (
+            file.rpartition('.')[0]
+            for file in files
+        )
 
         def gdfs() -> Iterator[GeoDataFrame]:
             it_files = iter(files)
@@ -551,51 +563,58 @@ class Surfaces:
                     next_future = threads.submit(gpd.read_feather, file)
                 yield next_future.result()
 
-        def dfs() -> Iterator[GeoDataFrame]:
-            for gdf in gdfs():
-                centroid = gdf.geometry.iloc[0].centroid
-                utm = get_utm_from_lon_lat(centroid.x, centroid.y)
-                area = (
-                    GeoSeries.to_crs(gdf['geometry'], utm)
-                        .area
-                )
-                sum = gdf['sum']
-                weighted = sum / area
-                yield DataFrame({
-                    'sum': sum,
-                    'weighted': weighted,
-                }, index=gdf.index)
-
-        concat = pd.concat(dfs())
+        concat = pd.concat((
+            gdf.drop('geometry', axis=1)
+            .assign(name=next(names))
+            .set_index('name', append=True)
+            for gdf in gdfs()
+        ))
         return concat
 
 
 if __name__ == '__main__':
-    print('surfaces')
-    chicago = pyrosm_extract(
-        'chicago',
-        osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
-        bbox=[41.865140845410046, -87.634181491039, 41.88789218539278, -87.61083554343192],
+    t = time.time()
+    loop_path = osmium_extract(
+        '/home/arstneio/Downloads/chi.osm.pbf',
+        '~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
+        [41.85784676139911, -87.64350384884648, 41.88852432376579, -87.61311978580892]
     )
-    sao_res = Surfaces.networks.driving.rasterstats_from_file(
-        chicago,
-            '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
+    network = Surfaces.networks.driving.rasterstats_from_file(
+        loop_path,
+        '/home/arstneio/Downloads/shadows_new/chi-summer',
+        16,
     )
-    print(sao_res.total_bounds)
-
-    london = pyrosm_extract(
-        'london',
-        osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
-        bbox=[51.48810230578064, -0.02620147457317379, 51.50680415101511, 0.0001485471745494128],
-    )
-    l_res = Surfaces.networks.driving.rasterstats_from_file(
-        london,
-        '/home/arstneio/Downloads/shadows/test/winter/',
-        zoom=16,
-    )
-    print(l_res.total_bounds)
+    print(f'{(time.time() - t)/60:.1f} minutes')
+    network.to_feather('chicago.feather')
     print()
+
+
+# if __name__ == '__main__':
+#     print('surfaces')
+#     chicago = pyrosm_extract(
+#         'chicago',
+#         osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
+#         bbox=[41.865140845410046, -87.634181491039, 41.88789218539278, -87.61083554343192],
+#     )
+#     sao_res = Surfaces.networks.driving.rasterstats_from_file(
+#         chicago,
+#             '/home/arstneio/Downloads/shadows/test/winter/',
+#         zoom=16,
+#     )
+#     print(sao_res.total_bounds)
+#
+#     london = pyrosm_extract(
+#         'london',
+#         osmium_executable_path='~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
+#         bbox=[51.48810230578064, -0.02620147457317379, 51.50680415101511, 0.0001485471745494128],
+#     )
+#     l_res = Surfaces.networks.driving.rasterstats_from_file(
+#         london,
+#         '/home/arstneio/Downloads/shadows/test/winter/',
+#         zoom=16,
+#     )
+#     print(l_res.total_bounds)
+#     print()
 
     # t = time.time()
     # parks = Surfaces.networks.rasterstats_from_file(
