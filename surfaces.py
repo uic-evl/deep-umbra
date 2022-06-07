@@ -541,7 +541,7 @@ class Surfaces:
     def concatenate_from_files(cls, files: list[str]) -> DataFrame:
         """
         :param files: list of .feather files that will be concatenated for comparison across cities
-        :return:    DataFrame, with the indices, sum, and weighted sums of each entry
+        :return     a single Dataframe, with the OSM ID and filename as index, and statistics as values
         """
         names = (
             file.rpartition('.')[0]
