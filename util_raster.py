@@ -21,13 +21,16 @@ import numpy as np
 import pyproj.aoi
 
 
-def _deg2num(lon_deg, lat_deg, zoom, always_xy):
+def _deg2num(lon_deg, lat_deg, zoom, always_xy, floored: bool):
     # lat_rad = math.radians(lat_deg)
     lat_rad = lat_deg * math.pi / 180.0
 
     n = 2 ** zoom
     xtile = ((lon_deg + 180) / 360 * n)
     ytile = ((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    if floored:
+        xtile = int(xtile)
+        ytile = int(ytile)
     if always_xy:
         return xtile, ytile
     else:
@@ -39,6 +42,7 @@ def deg2num(
         lat_deg: float,
         zoom: int,
         always_xy=True,
+        floored=False,
 ) -> tuple[float, float]:
     """
 
@@ -47,7 +51,7 @@ def deg2num(
     :param zoom:
     :return: xtile, ytile
     """
-    return _deg2num(lon_deg, lat_deg, zoom, always_xy)
+    return _deg2num(lon_deg, lat_deg, zoom, always_xy, floored)
 
 
 def _num2deg(xtile, ytile, zoom, always_xy):
@@ -154,8 +158,8 @@ def get_shadow_image(
         threshold: tuple[float, float]
 ) -> np.ndarray:
     # Note: python 3.9 glob.glob() does not have kwarg root_dir
-    tw, tn = deg2num(gw, gn, zoom, True)
-    te, ts = deg2num(ge, gs, zoom, True)
+    tw, tn = deg2num(gw, gn, zoom, True, floored=True)
+    te, ts = deg2num(ge, gs, zoom, True, floored=True)
 
     tw = math.floor(tw)
     tn = math.floor(tn)
@@ -243,8 +247,8 @@ def get_raster_path(
         outpath: str = None,
         nodata: int = -1
 ) -> str:
-    tw, tn = deg2num(gw, gn, zoom, True)
-    te, ts = deg2num(ge, gs, zoom, True)
+    tw, tn = deg2num(gw, gn, zoom, True, floored=True)
+    te, ts = deg2num(ge, gs, zoom, True, floored=True)
     te += 1
     ts += 1
 
