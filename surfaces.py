@@ -1,7 +1,8 @@
+from numbers import Number
 import abc
 import time
 
-from util_raster import get_utm_from_lon_lat, get_raster_path, get_raster_affine
+from util_raster import get_utm_from_lon_lat, get_raster_path, get_raster_size
 import concurrent.futures
 import concurrent.futures
 import math
@@ -38,7 +39,7 @@ import pyrosm
 def osmium_extract(
         file: str,
         osmium_executable_path: str,
-        bbox: list[float, ...],
+        bbox: list[float],
         bbox_latlon=True
 ) -> str:
     if bbox_latlon:
@@ -57,7 +58,7 @@ def osmium_extract(
 def pyrosm_extract(
         source: str,
         osmium_executable_path: str = None,
-        bbox: Optional[list[float, ...]] = None,
+        bbox: Optional[list[float]] = None,
         bbox_latlon=True
 ) -> str:
     path = pyrosm.get_data(source)
@@ -70,7 +71,7 @@ def pyrosm_extract(
 def _(
         source: list[str],
         osmium_executable_path: str = None,
-        bbox: Union[list[float, ...], None] = None,
+        bbox: Union[list[float], None] = None,
         bbox_latlon=True
 ) -> Iterator[str]:
     with concurrent.futures.ThreadPoolExecutor() as threads, concurrent.futures.ProcessPoolExecutor() as processes:
@@ -131,7 +132,119 @@ def gen_zonal_stats(
     return arr
 
 
-class RasterStats:
+class RasterStats(abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    def _rasterstats_from_file(
+            cls,
+            file: str,
+            shadow_dir: str,
+            zoom: int,
+            threshold: tuple[float, float],
+            mask: Optional[list[float]],
+            raster: Optional[str],
+    ) -> GeoDataFrame:
+        ...
+
+    @classmethod
+    def rasterstats_from_file(
+            cls,
+            file: Union[str, list[str]],
+            shadow_dir: str,
+            zoom: int,
+            threshold: tuple[float, float] = (0.0, 1.0),
+            mask: Optional[list[float]] = None,
+            raster: Optional[str] = None,
+    ) -> GeoDataFrame:
+        """
+        :param file: .pbf file or pyrosm source
+        :param shadow_dir: directory of all shadow xtiles and ytiles
+        :param zoom: slippy map zoom
+        :param threshold: cut-off threshold for array values
+        :param mask: [miny, minx, maxy, maxx] to restrict raster array
+        :param raster: optional raster file that will be used instead of generating a raster for the file
+        :return: GeoDataFrame
+            geometry as original lines, even though the area is a 4m buffer
+        """
+        return cls._rasterstats_from_file(
+            file,
+            shadow_dir=shadow_dir,
+            zoom=zoom,
+            threshold=threshold,
+            mask=mask,
+            raster=raster,
+        )
+
+    @classmethod
+    @abc.abstractmethod
+    def _rastersize_from_file(
+            cls,
+            file: Union[str, Iterable[str]],
+            zoom: int,
+            mask: Optional[list[float]]
+    ) -> int:
+        ...
+
+    @classmethod
+    def rastersize_from_file(
+            cls,
+            file: Union[str, Iterable[str]],
+            zoom: int,
+            mask: Optional[list[float]] = None,
+    ) -> int:
+        """
+        :param file: osm.pbf file,
+        :param zoom: slippy tile zoom
+        :param mask: mask to restrict raster [miny, minx, maxy, maxx]
+        :return: raster array size in bytes
+        """
+        return cls._rastersize_from_file(file, zoom=zoom, mask=mask)
+
+    @classmethod
+    def rastersize_from_files(
+            cls,
+            files: Iterable[str],
+            zoom: int,
+            mask: Optional[Iterable[list[float]]] = None
+    ) -> dict[str, int]:
+        """
+        :param files: osm.pbf files
+        :param zoom: slippy tile zoom
+        :param mask: masks to restrict rasters [[miny, minx, maxy, maxx]]
+        :return: {file: raster array size}
+        """
+        if mask is None:
+            mask = itertools.repeat(None)
+        return {
+            f: cls._rastersize_from_file(f, zoom=zoom, mask=m)
+            for f, m in zip(files, mask)
+        }
+
+
+class MetaRasterOsmium(type(osmium.SimpleHandler), type(abc.ABC), metaclass=type):
+    """
+    Metaclasses are typically too complicated to be necessary, but the polymorphism of inheriting from both
+    osmium.SimpleHandler and RasterStats requires a metaclass that inherits from both of the respective metaclasses,
+    Because nothing is implemented here, it inherits __new__ and __init__ directly from osmium.SimpleHandler
+    """
+
+
+class DescriptorParks(osmium.SimpleHandler, RasterStats, metaclass=MetaRasterOsmium):
+    wkbfab = osmium.geom.WKBFactory()
+
+    @classmethod
+    def _rastersize_from_file(
+            cls,
+            file: Union[str, Iterable[str]],
+            zoom: int,
+            mask: Optional[list[float]],
+    ) -> int:
+        if '.' not in file:
+            file = pyrosm.get_data(file)
+        surfaces = Surfaces(file, shadow_dir='')
+        gdf = surfaces.parks.gdf
+        return get_raster_size(*gdf.total_bounds, zoom=zoom, mask=mask)
+
     @classmethod
     def _rasterstats_from_file(
             cls,
@@ -139,6 +252,7 @@ class RasterStats:
             shadow_dir: str,
             zoom: int,
             threshold: tuple[float, float],
+            mask: Optional[list[float]],
             raster: Optional[str],
     ) -> GeoDataFrame:
         stats: Collection[str] = tuple('min max mean count sum median nodata'.split())
@@ -152,7 +266,8 @@ class RasterStats:
             zoom=zoom,
             basedir=shadow_dir,
             threshold=threshold,
-            outpath=raster
+            outpath=raster,
+            mask=mask,
         )
 
         # Some geometry can be None and rasterstats will raise an exception
@@ -160,7 +275,6 @@ class RasterStats:
         # geometry: GeoSeries = gdf.loc[loc, 'geometry']
         gdf = gdf[gdf['geometry'].notna()]
         geometry = gdf.geometry
-
 
         step = math.ceil(len(geometry) / multiprocessing.cpu_count())
         slices = [
@@ -212,36 +326,6 @@ class RasterStats:
         result['name'] = Series.astype(result['name'], 'string')
         return result
 
-    @classmethod
-    def rasterstats_from_file(
-            cls,
-            file: Union[str, list[str]],
-            shadow_dir: str,
-            zoom: int,
-            threshold: tuple[float, float] = (0.0, 1.0),
-            raster: Optional[str] = None,
-    ) -> GeoDataFrame:
-        """
-        :param file: .pbf file or pyrosm source
-        :param shadow_dir: directory of all shadow xtiles and ytiles
-        :param zoom: slippy map zoom
-        :param threshold: cut-off threshold for array values
-        :param raster: optional raster file that will be used instead of generating a raster for the file
-        :return: GeoDataFrame
-            geometry as original lines, even though the area is a 4m buffer
-        """
-        return cls._rasterstats_from_file(
-            file,
-            shadow_dir=shadow_dir,
-            zoom=zoom,
-            threshold=threshold,
-            raster=raster,
-        )
-
-
-class DescriptorParks(osmium.SimpleHandler, RasterStats):
-    wkbfab = osmium.geom.WKBFactory()
-
     def __init__(self):
         super(DescriptorParks, self).__init__()
         self.natural = {'wood', 'grass'}
@@ -256,7 +340,7 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
         self.geometry = {}
         self.ways = set()
         self._cache: WeakKeyDictionary[Surfaces, GeoDataFrame] = WeakKeyDictionary()
-        self._bbox: WeakKeyDictionary[Surfaces, list[float, ...]] = WeakKeyDictionary()
+        self._bbox: WeakKeyDictionary[Surfaces, list[float]] = WeakKeyDictionary()
 
     def area(self, a: osmium.osm.Area):
         # TODO: What about nodes marked 'point of interest'?
@@ -332,10 +416,22 @@ class DescriptorParks(osmium.SimpleHandler, RasterStats):
         del self._cache[self._surfaces]
 
 
-class DescriptorNetwork(abc.ABC, RasterStats):
+class DescriptorNetwork(RasterStats):
     network_type: str
 
-
+    @classmethod
+    def _rastersize_from_file(
+            cls,
+            file: Union[str, Iterable[str]],
+            zoom: int,
+            mask: Optional[list[float]],
+    ) -> Union[float, dict[str, float]]:
+        if '.' not in file:
+            file = pyrosm.get_data(file)
+        surfaces = Surfaces(file, shadow_dir='')
+        network: DescriptorNetwork = surfaces.networks.__getattribute__(cls.network_type)
+        gdf = network.gdf
+        return get_raster_size(*gdf.total_bounds, zoom=zoom, mask=mask)
 
     @classmethod
     def _rasterstats_from_file(
@@ -344,6 +440,7 @@ class DescriptorNetwork(abc.ABC, RasterStats):
             shadow_dir: str,
             zoom: int,
             threshold: tuple[float, float],
+            mask: Optional[list[float]],
             raster: Optional[str],
     ) -> GeoDataFrame:
         if '.' not in file:
@@ -366,7 +463,9 @@ class DescriptorNetwork(abc.ABC, RasterStats):
         crs = get_utm_from_lon_lat(lon, lat)
         buffer = (
             geometry.to_crs(crs)
-                .buffer(4)
+                .buffer(2)  # was originally a 4 meter buffer, but a lane is 4 meters wide so should be 2 meters
+            # probably doesn't matter too much
+            # .buffer(4)
         )
         area = buffer.area
         buffer = buffer.to_crs(4326)
@@ -377,6 +476,7 @@ class DescriptorNetwork(abc.ABC, RasterStats):
             basedir=shadow_dir,
             threshold=threshold,
             outpath=raster,
+            mask=mask,
         )
 
         step = math.ceil(len(geometry) / multiprocessing.cpu_count())
@@ -449,7 +549,7 @@ class DescriptorNetwork(abc.ABC, RasterStats):
     def __init__(self):
         ## Note to self: self._instance is an anti-pattern
         self._cache: WeakKeyDictionary[Surfaces, tuple[GeoDataFrame, GeoDataFrame]] = WeakKeyDictionary()
-        self._bbox: WeakKeyDictionary[Surfaces, list[float, ...]] = WeakKeyDictionary()
+        self._bbox: WeakKeyDictionary[Surfaces, list[float]] = WeakKeyDictionary()
 
     @property
     def gdf(self) -> GeoDataFrame:
@@ -565,29 +665,42 @@ class Surfaces:
 
         concat = pd.concat((
             gdf.drop('geometry', axis=1)
-            .assign(name=next(names))
-            .set_index('name', append=True)
+                .assign(name=next(names))
+                .set_index('name', append=True)
             for gdf in gdfs()
         ))
         return concat
 
 
+#
 if __name__ == '__main__':
-    t = time.time()
+    mask = [41.85784676139911, -87.64350384884648, 41.88852432376579, -87.61311978580892]
     loop_path = osmium_extract(
         '/home/arstneio/Downloads/chi.osm.pbf',
         '~/PycharmProjects/StaticOSM/work/osmium-tool/build/osmium',
         [41.85784676139911, -87.64350384884648, 41.88852432376579, -87.61311978580892]
     )
-    network = Surfaces.networks.driving.rasterstats_from_file(
+    driving = Surfaces.networks.driving.rastersize_from_file(
         loop_path,
-        '/home/arstneio/Downloads/shadows_new/chi-summer',
         16,
+        mask=mask
     )
-    print(f'{(time.time() - t)/60:.1f} minutes')
-    network.to_feather('chicago.feather')
+    parks = Surfaces.parks.rastersize_from_file(
+        loop_path,
+        16,
+        mask=mask
+    )
     print()
 
+    # network = Surfaces.networks.driving.rasterstats_from_file(
+    #     loop_path,
+    #     '/home/arstneio/Downloads/shadows_new/chi-summer',
+    #     16,
+    # )
+    # print(f'{(time.time() - t) / 60:.1f} minutes')
+    # network.to_feather('chicago.feather')
+    # print()
+    #
 
 # if __name__ == '__main__':
 #     print('surfaces')
@@ -616,27 +729,28 @@ if __name__ == '__main__':
 #     print(l_res.total_bounds)
 #     print()
 
-    # t = time.time()
-    # parks = Surfaces.networks.rasterstats_from_file(
-    #     '/home/arstneio/Downloads/abu.osm.pbf',
-    #     '/home/arstneio/Downloads/shadows/test/winter/',
-    #     zoom=16,
-    #     # threshold=.25
-    # )
-    # print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
-    # parks = Surfaces.parks.rasterstats_from_file(
-    #     '/home/arstneio/Downloads/ams.osm.pbf',
-    #     '/home/arstneio/Downloads/shadows/test/winter/',
-    #     zoom=16,
-    #     # threshold=.25
-    # )
-    # print()
-    # t = time.time()
-    # networks = Surfaces.networks.driving.rasterstats_from_file(
-    #     path,
-    #     '/home/arstneio/Downloads/shadows/test/winter/',
-    #     zoom=16,
-    #     # threshold=.25
-    # )
-    # print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
-    # print()
+# t = time.time()
+# driving = Surfaces.networks.driving.rasterstats_from_file(
+#     'london',
+#     '/home/arstneio/Downloads/shadows/test/winter/',
+#     zoom=16,
+#     # threshold=.25
+# )
+
+# print(f'parks took {int(time.time() - t)} seconds; {len(parks)=}')
+# parks = Surfaces.parks.rasterstats_from_file(
+#     '/home/arstneio/Downloads/ams.osm.pbf',
+#     '/home/arstneio/Downloads/shadows/test/winter/',
+#     zoom=16,
+#     # threshold=.25
+# )
+# print()
+# t = time.time()
+# networks = Surfaces.networks.driving.rasterstats_from_file(
+#     path,
+#     '/home/arstneio/Downloads/shadows/test/winter/',
+#     zoom=16,
+#     # threshold=.25
+# )
+# print(f'driving networks took {int(time.time() - t)} seconds; {len(networks)=}')
+# print()
