@@ -339,7 +339,7 @@ def overlay(
     :param gdf: GeoDataFrame or path to a GeoDataFrame
     :param raster: raster file
     :param figsize: ax figsize
-    :param statistic: the statistic to plot
+    :param statistic: the statistic to plot ("weighted" is from sum/count")
     :param kwargs: kwargs to pass to plt.plot()
     :return: None
     """
