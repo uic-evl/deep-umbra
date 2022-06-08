@@ -8,6 +8,7 @@ import cv2
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pyproj
 import pyproj.aoi
 import rasterio
@@ -392,11 +393,14 @@ def overlay(
     if isinstance(gdf, str):
         gdf = gpd.read_feather(gdf)
     if statistic == 'weighted' and 'weighted' not in gdf:
-        gdf['weighted'] = gdf['sum'] / gdf['count']
+        gdf['weighted'] = (
+            pd.Series.astype(gdf['sum'], float)
+            / gdf['count']
+        ).astype(float)
     raster = rasterio.open(raster)
     fig, ax = plt.subplots(figsize=figsize)
     rasterio.plot.show(raster, ax=ax)
-    gdf.plot(column=statistic, cmap='rainbow', ax=ax, **kwargs)
+    gdf.plot(column=statistic, cmap='rainbow', ax=ax,)
 
 
 if __name__ == '__main__':
