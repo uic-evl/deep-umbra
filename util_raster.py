@@ -1,24 +1,19 @@
-from pyproj import CRS
-import math
-import tempfile
-from typing import Iterator
-
-from geopandas import GeoDataFrame, GeoSeries
-from pandas import Series, DataFrame
-
-import geopandas as gpd
-
 import concurrent.futures
-import os
 import math
-
-import pyproj
-import rasterio
+import os
+import tempfile
+from typing import Iterator, Union
 
 import cv2
+import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
-
+import pyproj
 import pyproj.aoi
+import rasterio
+import rasterio.plot
+import rasterio.plot
+from geopandas import GeoDataFrame
 
 
 def _deg2num(lon_deg, lat_deg, zoom, always_xy, floored: bool):
@@ -330,6 +325,33 @@ def get_raster_affine(
     image = image / 255
     transform = rasterio.transform.from_bounds(gw, gs, ge, gn, width, height)
     return image, transform
+
+
+def overlay(
+        gdf: Union[GeoDataFrame, str],
+        raster: str,
+        figsize: tuple = (15, 15),
+        statistic: str = 'weighted',
+        **kwargs,
+) -> None:
+    """
+    Plot an overlay of the Surface GDF and shadow raster file
+    :param gdf: GeoDataFrame or path to a GeoDataFrame
+    :param raster: raster file
+    :param figsize: ax figsize
+    :param statistic: the statistic to plot
+    :param kwargs: kwargs to pass to plt.plot()
+    :return: None
+    """
+
+    if isinstance(gdf, str):
+        gdf = gpd.read_feather(gdf)
+    if statistic == 'weighted' and 'weighted' not in gdf:
+        gdf['weighted'] = gdf['sum'] / gdf['count']
+    raster = rasterio.open(raster)
+    fig, ax = plt.subplots(figsize=figsize)
+    rasterio.plot.show(raster, ax=ax)
+    gdf.plot(column=statistic, cmap='rainbow', ax=ax, **kwargs)
 
 
 if __name__ == '__main__':
