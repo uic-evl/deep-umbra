@@ -1,33 +1,32 @@
-from pyproj import CRS
-import math
-import tempfile
-from typing import Iterator
-
-from geopandas import GeoDataFrame, GeoSeries
-from pandas import Series, DataFrame
-
-import geopandas as gpd
-
 import concurrent.futures
-import os
 import math
-
-import pyproj
-import rasterio
+import os
+import tempfile
+from typing import Iterator, Union, Optional
 
 import cv2
+import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
-
+import pandas as pd
+import pyproj
 import pyproj.aoi
+import rasterio
+import rasterio.plot
+import rasterio.plot
+from geopandas import GeoDataFrame
 
 
-def _deg2num(lon_deg, lat_deg, zoom, always_xy):
+def _deg2num(lon_deg, lat_deg, zoom, always_xy, floored: bool):
     # lat_rad = math.radians(lat_deg)
     lat_rad = lat_deg * math.pi / 180.0
 
     n = 2 ** zoom
     xtile = ((lon_deg + 180.0) / 360.0 * n)
     ytile = ((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    if floored:
+        xtile = int(xtile)
+        ytile = int(ytile)
     if always_xy:
         return xtile, ytile
     else:
@@ -39,6 +38,7 @@ def deg2num(
         lat_deg: float,
         zoom: int,
         always_xy=True,
+        floored=False,
 ) -> tuple[float, float]:
     """
 
@@ -47,7 +47,7 @@ def deg2num(
     :param zoom:
     :return: xtile, ytile
     """
-    return _deg2num(lon_deg, lat_deg, zoom, always_xy)
+    return _deg2num(lon_deg, lat_deg, zoom, always_xy, floored)
 
 
 def _num2deg(xtile, ytile, zoom, always_xy):
@@ -144,6 +144,44 @@ def get_utm_from_lon_lat(lon: float, lat: float) -> pyproj.crs.CRS:
     return utm_crs
 
 
+def get_raster_size(
+        gw: float,
+        gs: float,
+        ge: float,
+        gn: float,
+        zoom: int,
+        mask: Optional[list[float]] = None,
+) -> int:
+    """
+
+    :param gw: minx
+    :param gs: miny
+    :param ge: maxx
+    :param gn: maxy
+    :param zoom: slippy tile zoom
+    :param mask: [miny, minx, maxy, maxx]
+    :return: size of raster to be generated
+    """
+    if mask is not None:
+        gs = max(gs, mask[0])
+        gw = max(gw, mask[1])
+        gn = min(gn, mask[2])
+        ge = min(ge, mask[3])
+
+    tw, tn = deg2num(gw, gn, zoom, True, floored=True)
+    te, ts = deg2num(ge, gs, zoom, True, floored=True)
+
+    ts += 1
+    te += 1
+
+    tiles = (te - tw) * (ts - tn)
+    # TODO: if tile cells or dtype changes this must too
+    cells = 65536 * tiles
+    # 2 bytes per int16 cell, if the dtype changes so must this
+    bytes: int = cells * 2
+    return bytes
+
+
 def get_shadow_image(
         gw: float,
         gs: float,
@@ -151,16 +189,17 @@ def get_shadow_image(
         gn: float,
         zoom: int,
         basedir: str,
-        threshold: tuple[float, float]
+        mask: Optional[list[float]] = None,
+        threshold: tuple[float, float] = (0.0, 1.0)
 ) -> np.ndarray:
+    if mask is not None:
+        gs = max(gs, mask[0])
+        gw = max(gw, mask[1])
+        gn = min(gn, mask[2])
+        ge = min(ge, mask[3])
     # Note: python 3.9 glob.glob() does not have kwarg root_dir
-    tw, tn = deg2num(gw, gn, zoom, True)
-    te, ts = deg2num(ge, gs, zoom, True)
-
-    tw = int(math.floor(tw))
-    tn = int(math.floor(tn))
-    te = int(math.floor(te))
-    ts = int(math.floor(ts))
+    tw, tn = deg2num(gw, gn, zoom, True, floored=True)
+    te, ts = deg2num(ge, gs, zoom, True, floored=True)
 
     ytiles = np.arange(tn, ts + 1, dtype=np.uint32)
     xtiles = np.arange(tw, te + 1, dtype=np.uint32)
@@ -244,11 +283,16 @@ def get_raster_path(
         threshold: tuple[float, float] = (0.0, 1.0),
         outdir: str = None,
         outpath: str = None,
+        mask: Optional[list[float]] = None,
         nodata: int = -1
 ) -> str:
-    
-    tw, tn = deg2num(gw, gn, zoom, True)
-    te, ts = deg2num(ge, gs, zoom, True)
+    if mask is not None:
+        gs = max(gs, mask[0])
+        gw = max(gw, mask[1])
+        gn = min(gn, mask[2])
+        ge = min(ge, mask[3])
+    tw, tn = deg2num(gw, gn, zoom, True, floored=True)
+    te, ts = deg2num(ge, gs, zoom, True, floored=True)
     te += 1
     ts += 1
 
@@ -292,53 +336,83 @@ def get_raster_path(
 
     return outpath
 
+#
+# def get_raster_affine(
+#         gw: float,
+#         gs: float,
+#         ge: float,
+#         gn: float,
+#         zoom: int,
+#         basedir: str,
+#         threshold: tuple[float, float] = (0.0, 1.0)
+# ) -> tuple[np.ndarray, tuple]:
+#     "Returns the array and the Affnie transformation"
+#     tw, tn = deg2num(gw, gn, zoom, True)
+#     te, ts = deg2num(ge, gs, zoom, True)
+#     te += 1
+#     ts += 1
+#
+#     # if outdir is None:
+#     #     outdir = tempfile.gettempdir()
+#     # if not os.path.exists(outdir):
+#     #     os.makedirs(outdir)
+#     # # outpath = os.path.join(outdir, f'{zoom}_{tw}_{ts}_{te}_{tn}.tif')
+#
+#     image = get_shadow_image(
+#         gw,
+#         gs,
+#         ge,
+#         gn,
+#         zoom=zoom,
+#         basedir=basedir,
+#         threshold=threshold,
+#     )
+#     height, width = image.shape
+#     gw, ts = num2deg(tw, ts, zoom, True)
+#     ge, tn = num2deg(te, tn, zoom, True)
+#
+#     image = image / 255
+#     transform = rasterio.transform.from_bounds(gw, gs, ge, gn, width, height)
+#     return image, transform
 
-def get_raster_affine(
-        gw: float,
-        gs: float,
-        ge: float,
-        gn: float,
-        zoom: int,
-        basedir: str,
-        threshold: tuple[float, float] = (0.0, 1.0)
-) -> tuple[np.ndarray, tuple]:
-    "Returns the array and the Affnie transformation"
-    tw, tn = deg2num(gw, gn, zoom, True)
-    te, ts = deg2num(ge, gs, zoom, True)
-    te += 1
-    ts += 1
 
-    # if outdir is None:
-    #     outdir = tempfile.gettempdir()
-    # if not os.path.exists(outdir):
-    #     os.makedirs(outdir)
-    # # outpath = os.path.join(outdir, f'{zoom}_{tw}_{ts}_{te}_{tn}.tif')
+def overlay(
+        gdf: Union[GeoDataFrame, str],
+        raster: str,
+        figsize: tuple = (15, 15),
+        statistic: str = 'weighted',
+        **kwargs,
+) -> None:
+    """
+    Plot an overlay of the Surface GDF and shadow raster file
+    :param gdf: GeoDataFrame or path to a GeoDataFrame
+    :param raster: raster file
+    :param figsize: ax figsize
+    :param statistic: the statistic to plot ("weighted" is from sum/count)
+    :param kwargs: kwargs to pass to plt.plot()
+    :return: None
+    """
 
-    image = get_shadow_image(
-        gw,
-        gs,
-        ge,
-        gn,
-        zoom=zoom,
-        basedir=basedir,
-        threshold=threshold,
-    )
-    height, width = image.shape
-    gw, ts = num2deg(tw, ts, zoom, True)
-    ge, tn = num2deg(te, tn, zoom, True)
-
-    image = image / 255
-    transform = rasterio.transform.from_bounds(gw, gs, ge, gn, width, height)
-    return image, transform
+    if isinstance(gdf, str):
+        gdf = gpd.read_feather(gdf)
+    if statistic == 'weighted' and 'weighted' not in gdf:
+        gdf['weighted'] = (
+            pd.Series.astype(gdf['sum'], float)
+            / gdf['count']
+        ).astype(float)
+    raster = rasterio.open(raster)
+    fig, ax = plt.subplots(figsize=figsize)
+    rasterio.plot.show(raster, ax=ax)
+    gdf.plot(column=statistic, cmap='rainbow', ax=ax,)
 
 
 if __name__ == '__main__':
-    tiles = get_shadow_image(
-        *(40.702844950247666, -74.02244810805952)[::-1],
-        *(40.78270102430847, -73.93524412566495)[::-1],
-        16,
-        '/home/arstneio/Downloads/shadows/test/16-winter/'
-    )
+    # tiles = get_shadow_image(
+    #     *(40.702844950247666, -74.02244810805952)[::-1],
+    #     *(40.78270102430847, -73.93524412566495)[::-1],
+    #     16,
+    #     '/home/arstneio/Downloads/shadows/test/16-winter/'
+    # )
 
     print()
     # cells = get_cells_from_tiles(tiles, os.path.join('/home/arstneio/Downloads/shadows/nyc-sep-22/', str(16)))
