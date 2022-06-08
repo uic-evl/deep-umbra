@@ -26,7 +26,7 @@ def _deg2num(lon_deg, lat_deg, zoom, always_xy):
     lat_rad = lat_deg * math.pi / 180.0
 
     n = 2 ** zoom
-    xtile = ((lon_deg + 180) / 360 * n)
+    xtile = ((lon_deg + 180.0) / 360.0 * n)
     ytile = ((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
     if always_xy:
         return xtile, ytile
@@ -157,16 +157,19 @@ def get_shadow_image(
     tw, tn = deg2num(gw, gn, zoom, True)
     te, ts = deg2num(ge, gs, zoom, True)
 
-    tw = math.floor(tw)
-    tn = math.floor(tn)
-    te = math.floor(te)
-    ts = math.floor(ts)
+    tw = int(math.floor(tw))
+    tn = int(math.floor(tn))
+    te = int(math.floor(te))
+    ts = int(math.floor(ts))
 
     ytiles = np.arange(tn, ts + 1, dtype=np.uint32)
     xtiles = np.arange(tw, te + 1, dtype=np.uint32)
 
     r_tilecount = len(ytiles)
     c_tilecount = len(xtiles)
+
+    # print(r_tilecount, c_tilecount)
+    # return
 
     cslices = {
         xtile: slice(l, l + 256)
@@ -243,6 +246,7 @@ def get_raster_path(
         outpath: str = None,
         nodata: int = -1
 ) -> str:
+    
     tw, tn = deg2num(gw, gn, zoom, True)
     te, ts = deg2num(ge, gs, zoom, True)
     te += 1
