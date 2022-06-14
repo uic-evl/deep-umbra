@@ -336,6 +336,7 @@ def get_raster_path(
 
     return outpath
 
+
 #
 # def get_raster_affine(
 #         gw: float,
@@ -397,13 +398,13 @@ def overlay(
         gdf = gpd.read_feather(gdf)
     if statistic == 'weighted' and 'weighted' not in gdf:
         gdf['weighted'] = (
-            pd.Series.astype(gdf['sum'], float)
-            / gdf['count']
+                pd.Series.astype(gdf['sum'], float)
+                / (gdf['count'] + gdf['nodata'])
         ).astype(float)
     raster = rasterio.open(raster)
     fig, ax = plt.subplots(figsize=figsize)
     rasterio.plot.show(raster, ax=ax)
-    gdf.plot(column=statistic, cmap='rainbow', ax=ax,)
+    gdf.plot(column=statistic, cmap='rainbow', ax=ax, )
 
 
 if __name__ == '__main__':
