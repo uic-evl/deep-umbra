@@ -12,15 +12,10 @@ This repository contains the code for the paper "Deep Umbra: A Global-Scale Gene
 
 Authors:
 Kazi Shahrukh Omar (UIC)
-
 Gustavo Moreira (UFF)
-
 Daniel Hodczak (UIC)
-
 Maryam Hosseini (Rutgers / NYU)
-
 Marcos Lage (UFF)
-
 [Fabio Miranda](https://fmiranda.me) (UIC)
 
 Paper: Arxiv link soon
