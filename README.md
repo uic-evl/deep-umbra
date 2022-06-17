@@ -1,4 +1,4 @@
-# Deep Umbra
+# Deep Umbra: A Global-Scale Generative Adversarial Approach for Sunlight Access and Shadow Accumulation in Urban Spaces
 
 URL: http://evl.uic.edu/shadows/
 
