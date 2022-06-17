@@ -1,29 +1,51 @@
-# deep-shadows
+# Deep Umbra
+
+URL: https://evl.uic.edu/shadows/
+
+Deep Umbra is a a novel computational framework that enables the quantification of sunlight access and shadows at a global scale. Our framework is based on a generative adversarial network that considers the physical form of cities to compute high-resolution spatial information of accumulated sunlight access for the different seasons of the year. Deep Umbra's primary motivation is the impact that shadow management can have in people's quality of live, since it can affect levels of comfort, heat distribution, public parks, and so on.
+
+We also present the Global Shadow Dataset, a comprehensive dataset with the accumulated shadow information for over 100 cities in 6 continents. In order to visualize the data, click [here](https://evl.uic.edu/shadows/map/).
+
+This repository contains the code for the paper "Deep Umbra: A Global-Scale Generative Adversarial Approach for Sunlight Access and Shadow Accumulation in Urban Spaces".
+
+![Overview of Deep Umbra](overview.png)
+
+Authors:
+Kazi Shahrukh Omar (UIC)
+
+Gustavo Moreira (UFF)
+
+Daniel Hodczak (UIC)
+
+Maryam Hosseini (Rutgers / NYU)
+
+Marcos Lage (UFF)
+
+[Fabio Miranda](https://fmiranda.me) (UIC)
+
+Paper: Arxiv link soon
+
+## Prerequisites
+
+The code is written in Python. The following Python packages are required:
+
+```
+Python 3.x
+Tensorflow 2.9
+Pandas 1.4.2
+Numpy 1.22.4
+Geopandas 0.4.0
+OpenCV 4.6
+pygeos
+pyproj
+scikit_image
+scikit_learn
+rasterio
+osmium
+```
+
+## Structure
+
+The code is stucture as different Jupyter Notebooks. ``01-download-osm-data.ipynb`` downloads OpenStreetMap data. A height map is generated with ``02-generate-elevation-map``, followed by data preparation in ``03-prepare-data.ipynb``, GAN training (``04-GAN-shadow-height-spatial``), evaluation (``05-evaluate-spatial.ipynb``, ``06-evaluation-all-cases.ipynb``, ``07-evaluation-measurements.ipynb``) and computation of data and performance metrics for multiple cities (``08-compute-cities.ipynb``, ``09-compute-urban-metrics.ipynb ``, ``10-urban-metrics-analysis.ipynb``).
 
 
-## How to run the server
-
-- Install flask with pip
-- Run `$ export FLASK_APP=server`
-- Run `$ flask run`  
-
-## Making requests to the server
-
-- A example of client can be seen in "client_flask_example.py"
-
-### Routes
-
-- `http://0.0.0.0:5000/infer/img`:
-    - `POST`: Returns a python list (values are in the interval [-1,1]) representing the predicted shadow scheme given an input image
-        - JSON format: { 'instance': [input_image : list, input_lat : list, input_date : list]}
-            - input_image: a python list of shape (1,512,512,1) containing the height description of a region. It must be normalized (values in the interval [-1,1]).
-            - input_lat: a python list of shape (1,512,512,1) with all positions containing the same value: the latitude of the region described in input_image. It must be normalized (values in the interval [-1,1]).
-            - input_date: a python list of shape (1,512,512,1) with all positions containing the same value (represents season): 0 = winter, 1 = spring and 3 = summer. It must be normalized (values in the interval [-1,1]).
-- `http://0.0.0.0:5000/infer/json`:
-    - `POST`: Returns a python list (values are in the interval [-1,1]) representing the predicted shadow scheme given an input json describing a slippy tile
-        - JSON format: { 'info': [xtile : int, ytile : int, zoom : int, maxheight : float | int, season : string] }
-            - xtile: x coordinate of the slippy tile
-            - ytile: y coordinate of the slippy tile
-            - zoom: zoom level of the slippy tile
-            - maxheight: max height present in the dataset
-            - season: string representing the season ('summer', 'winter', 'spring')
