@@ -49,4 +49,4 @@ osmium
 
 The code is stucture as different Jupyter Notebooks. ``01-download-osm-data.ipynb`` downloads OpenStreetMap data. A height map is generated with ``02-generate-elevation-map``, followed by data preparation in ``03-prepare-data.ipynb``, GAN training (``04-GAN-shadow-height-spatial``), evaluation (``05-evaluate-spatial.ipynb``, ``06-evaluation-all-cases.ipynb``, ``07-evaluation-measurements.ipynb``) and computation of data and performance metrics for multiple cities (``08-compute-cities.ipynb``, ``09-compute-urban-metrics.ipynb ``, ``10-urban-metrics-analysis.ipynb``).
 
-
+The weights for our pre-trained model can be downloaded [here](https://drive.google.com/file/d/1OumDM4AtiCLjHdHFZOs8rFcEoR3h2rT3/view?usp=sharing). If you use the weights, you can skip the GAN training (``04-GAN-shadow-height-spatial``) and evaluation (``05-evaluate-spatial.ipynb``, ``06-evaluation-all-cases.ipynb``, ``07-evaluation-measurements.ipynb``) steps, and focus on data preparation and inference (remaining steps).
