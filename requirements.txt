@@ -23,3 +23,4 @@ shadow
 Shapely
 spatialpandas
 tensorflow
+tqdm
