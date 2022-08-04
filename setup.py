@@ -1,10 +1,6 @@
 from setuptools import dist
 
-dist.Distribution().fetch_build_eggs(['Cython>=0.15.1', 'numpy>=1.10'])
-from Cython.Build import cythonize
-import warnings
 from pathlib import Path
-import numpy
 from setuptools import find_packages
 from setuptools import setup
 
@@ -25,9 +21,6 @@ setup(
     python_requires='>=3.9',
     install_requires=install_requires,
     setup_requires=[
-        'cython',
         'setuptools>=18.0'
     ],
-    include_dirs=[numpy.get_include()],
-    ext_modules=cythonize('cutil/functions.pyx'),
 )
