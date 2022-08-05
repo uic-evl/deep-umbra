@@ -70,7 +70,7 @@ def predict_at_city_zoom(
     for pair in itertools.product((W, W + 1), (N, N + 1)):
         if pair not in ij:
             continue
-        futures[(W, N)] = threads.submit(load_input, ij[pair].as_posix())
+        futures[(W, N)] = threads.submit(tf.io.read_file, ij[pair].as_posix())
     # LOAD NW CORNER
     for pair in itertools.product((W, W + 1), (N, N + 1)):
         if pair not in ij:
