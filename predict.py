@@ -69,16 +69,21 @@ def predict(
     cache: dict[tuple[int, int], np.ndarray] = Cache()
     serialize = []
     threads = ThreadPoolExecutor()
-    # TODO: load images for northwest corner
-    E_1 = E - 1
-    W_1 = W+1
+    E_MINUS1 = E - 1
+    W_PLUS1 = W + 1
+
+    # PREPARE NW CORNER
+    for pair in itertools.product((W, W + 1), (N, N + 1)):
+        if pair not in ij:
+            continue
+        futures[(W, N)] = threads.submit(load_input, height_folder, city, zoom, *pair)
 
     for i, j in tqdm(itertools.product(
             range(W, E + 1),
             range(N, S + 1),
     )):
         # PREPARE
-        if i < E_1:
+        if i < E_MINUS1:
             # NEXT: EASTWARD
             se = (i + 2, j + 1)
             if se in ij:
@@ -116,7 +121,7 @@ def predict(
             n = (E - 1, j - 2)
             if n in cache:
                 del cache[n]
-        elif W_1 < i < E_1:
+        elif W_PLUS1 < i < E_MINUS1:
             # EASTWARD
             nw = (i - 2, j - 2)
             if nw in cache:
