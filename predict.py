@@ -1,4 +1,5 @@
 import concurrent.futures
+from sklearn.utils.extmath import cartesian
 import itertools
 from collections import UserDict
 from concurrent.futures import ThreadPoolExecutor
@@ -22,42 +23,33 @@ class Cache(UserDict):
         super().__setitem__(key, value)
 
 
-def load_input(height_path, city, zoom, i, j):
-    filename = tf.strings.format('{}/{}/{}/{}/{}.png', (str(height_path), city, zoom, i, j))
-    filename = tf.strings.regex_replace(filename, '\"', "")
-    input_image = tf.io.read_file(filename)
-    return input_image
-
-
-def predict(
-        height_folder: Path,
+def predict_at_city_zoom(
+        input_folder: Path,
         output_folder: Path,
         dates: tuple[str] = ('spring', 'summer', 'winter'),
 ):
-    height_folder = Path(height_folder)
+    input_folder = Path(input_folder)
     output_folder = Path(output_folder)
-
-    paths = height_folder.glob('*/')
-    filepaths = list(itertools.chain.from_iterable(
-        map(lambda path: Path.glob(path, '*/*/*.png'), paths)
-    ))
-    city = filepaths[0].parts[-4]
-    zoom = int(filepaths[0].parts[-3])
-    ij = set(zip(
-        map(lambda path: int(path.parts[-2]), filepaths),
-        map(lambda path: int(path.parts[-1].rpartition('.')[0]), filepaths)
-    ))
+    city = input_folder.parts[-2]
+    zoom = int(input_folder.parts[-1])
+    ij: dict[tuple[int, int], Path] = {
+        (
+            int(path.parts[-2]),
+            int(path.parts[-1].rpartition('.')[0])
+        ): path
+        for path in input_folder.glob('*/*.png')
+    }
     W = min(i for i, _ in ij)
     E = max(i for i, _ in ij)
     N = min(j for _, j in ij)
     S = max(j for _, j in ij)
 
+
     xy_indices = {
-        (x, y): [
-            (xx, yy)
-            for xx in range(256 + 256 * x, 256 + 256 * (x + 1))
-            for yy in range(256 + 256 * y, 256 + 256 * (y + 1))
-        ]
+        (x, y): cartesian((
+            range(256 + 256 * x, 256 + 256 * (x + 1)),
+            range(256 + 256 * y, 256 + 256 * (y + 1)),
+        )).reshape((256, 256, -1))
         for x, y in itertools.product(range(-1, 2), range(-1, 2))
     }
 
@@ -76,7 +68,7 @@ def predict(
     for pair in itertools.product((W, W + 1), (N, N + 1)):
         if pair not in ij:
             continue
-        futures[(W, N)] = threads.submit(load_input, height_folder, city, zoom, *pair)
+        futures[(W, N)] = threads.submit(load_input, ij[pair])
 
     for i, j in tqdm(itertools.product(
             range(W, E + 1),
@@ -87,16 +79,17 @@ def predict(
             # NEXT: EASTWARD
             se = (i + 2, j + 1)
             if se in ij:
-                futures[se] = threads.submit(load_input, height_folder, city, zoom, *se)
+                # futures[se] = threads.submit(load_input, ij[se])
+                futures[se] = threads.submit(tf.io.read_file, ij[se].as_posix())
         elif i == E:
             # NEXT: WEST EDGE
             s = (W, j + 2)
             if s in ij:
-                futures[s] = threads.submit(load_input, height_folder, city, zoom, *s)
+                futures[s] = threads.submit(tf.io.read_file, ij[s].as_posix())
 
             se = (W + 1, j + 2)
             if se in ij:
-                futures[se] = threads.submit(load_input, height_folder, city, zoom, *se)
+                futures[se] = threads.submit(tf.io.read_file, ij[se].as_posix())
 
         # LOAD
         if i < E:
@@ -151,7 +144,7 @@ def predict(
         tf_date = tf.ones((512, 512,), dtype=tf.float32)
 
         for date in dates:
-            path: Path = output_folder / f'{city}-{date}' / zoom / i / j
+            path: Path = output_folder / f'{city}-{date}' / str(zoom) / str(i) / str(j)
             path.mkdir(parents=True, exist_ok=True)
 
             if date == 'winter':
@@ -165,9 +158,9 @@ def predict(
             tf_date = tf.reshape(tf_date, (512, 512, 1))
             tf_height, tf_lat, tf_date = normalize_input(tf_height, tf_lat, tf_date)
 
-            tf_height = np.array(tf_height).reshape(1, 512, 512, 1)
-            tf_lat = np.array(tf_lat).reshape(1, 512, 512, 1)
-            tf_date = np.array(tf_date).reshape(1, 512, 512, 1)
+            tf_height = np.array(tf_height).reshape((1, 512, 512, 1))
+            tf_lat = np.array(tf_lat).reshape((1, 512, 512, 1))
+            tf_date = np.array(tf_date).reshape((1, 512, 512, 1))
 
             prediction = deep_shadow.generator((tf_height, tf_lat, tf_date), training=True)
 
@@ -181,7 +174,20 @@ def predict(
         if future.exception():
             raise future.exception()
 
+
+def predict_cities(
+        height_folder: Path,
+        output_folder: Path,
+        dates: tuple[str] = ('spring', 'summer', 'winter')
+):
+    height_folder = Path(height_folder)
+    output_folder = Path(output_folder)
+    paths = height_folder.glob('*/*/')
+    for path in tqdm(paths):
+        predict_at_city_zoom(path, output_folder, dates)
+
+
 if __name__ == '__main__':
     height_folder = Path('data/heights_new')
     output_folder = Path('data/shadows_new')
-    predict(height_folder, output_folder)
+    predict_cities(height_folder, output_folder)
