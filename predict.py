@@ -41,11 +41,11 @@ def predict(
     filepaths = list(itertools.chain.from_iterable(
         map(lambda path: Path.glob(path, '*/*/*.png'), paths)
     ))
-    city = (filepaths[0].parts[-4])
+    city = filepaths[0].parts[-4]
     zoom = int(filepaths[0].parts[-3])
     ij = set(zip(
-        map(lambda path: int(Path.parts[-2]), filepaths),
-        map(lambda path: int(Path.parts[-1].rpartition('.')[0]), filepaths)
+        map(lambda path: int(path.parts[-2]), filepaths),
+        map(lambda path: int(path.parts[-1].rpartition('.')[0]), filepaths)
     ))
     W = min(i for i, _ in ij)
     E = max(i for i, _ in ij)
