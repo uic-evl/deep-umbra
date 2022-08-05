@@ -147,7 +147,7 @@ def predict_at_city_zoom(
 
 
         for date in dates:
-            path: Path = output_folder / f'{city}-{date}' / str(zoom) / str(i) / str(j) + '.png'
+            path: Path = output_folder / f'{city}-{date}' / str(zoom) / str(i) / (str(j) + '.png')
             path.mkdir(parents=True, exist_ok=True)
 
             if date == 'winter':
