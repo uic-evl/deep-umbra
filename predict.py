@@ -141,7 +141,6 @@ def predict_at_city_zoom(
         tf_lat = tf.math.scalar_mul(float(lat), tf_lat)
         tf_lat = tf.reshape(tf_lat, (512, 512, 1))
 
-        tf_date = tf.ones((512, 512,), dtype=tf.float32)
 
         for date in dates:
             path: Path = output_folder / f'{city}-{date}' / str(zoom) / str(i) / str(j)
@@ -154,6 +153,7 @@ def predict_at_city_zoom(
             else:
                 value = 2
 
+            tf_date = tf.ones((512, 512,), dtype=tf.float32)
             tf_date = tf.math.scalar_mul(float(value), tf_date)
             tf_date = tf.reshape(tf_date, (512, 512, 1))
             tf_height, tf_lat, tf_date = normalize_input(tf_height, tf_lat, tf_date)
