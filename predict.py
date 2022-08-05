@@ -68,7 +68,7 @@ def predict_at_city_zoom(
     for pair in itertools.product((W, W + 1), (N, N + 1)):
         if pair not in ij:
             continue
-        futures[(W, N)] = threads.submit(load_input, ij[pair])
+        futures[(W, N)] = threads.submit(load_input, ij[pair].as_posix())
 
     for i, j in tqdm(itertools.product(
             range(W, E + 1),
