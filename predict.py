@@ -175,6 +175,7 @@ def predict_at_city_zoom(
 
             serialize.append(threads.submit(cv2.imwrite, path.as_posix(), prediction[0] * 255))
 
+    threads.shutdown(wait=True)
     # check for exceptions, can be commented
     for future in serialize:
         if future.exception():
