@@ -41,7 +41,7 @@ def predict(
     filepaths = list(itertools.chain.from_iterable(
         map(lambda path: Path.glob(path, '*/*/*.png'), paths)
     ))
-    city = int(filepaths[0].parts[-4])
+    city = (filepaths[0].parts[-4])
     zoom = int(filepaths[0].parts[-3])
     ij = set(zip(
         map(lambda path: int(Path.parts[-2]), filepaths),
@@ -180,3 +180,8 @@ def predict(
     for future in serialize:
         if future.exception():
             raise future.exception()
+
+if __name__ == '__main__':
+    height_folder = Path('data/heights_new')
+    output_folder = Path('data/shadows_new')
+    predict(height_folder, output_folder)
