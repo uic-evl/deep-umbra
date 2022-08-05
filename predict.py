@@ -23,7 +23,7 @@ class Cache(UserDict):
 
 
 def load_input(height_path, city, zoom, i, j):
-    filename = tf.strings.format('{}/{}/{}/{}/{}.png', (height_path, city, zoom, i, j))
+    filename = tf.strings.format('{}/{}/{}/{}/{}.png', (str(height_path), city, zoom, i, j))
     filename = tf.strings.regex_replace(filename, '\"', "")
     input_image = tf.io.read_file(filename)
     return input_image
