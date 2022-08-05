@@ -71,6 +71,12 @@ def predict_at_city_zoom(
         if pair not in ij:
             continue
         futures[(W, N)] = threads.submit(load_input, ij[pair].as_posix())
+    # LOAD NW CORNER
+    for pair in itertools.product((W, W + 1), (N, N + 1)):
+        if pair not in ij:
+            continue
+        cache[pair] = futures[pair].result()
+        del futures[pair]
 
     for i, j in tqdm(itertools.product(
             range(W, E + 1),
@@ -127,7 +133,7 @@ def predict_at_city_zoom(
                 del cache[nw]
 
         # SKIP?
-        if (i, j) not in cache:
+        if (i, j) not in ij:
             continue
 
         # LOAD INPUT GRID
