@@ -74,6 +74,10 @@ def predict_at_city_zoom(
             range(W, E + 1),
             range(N, S + 1),
     )):
+        #   0   1   2   3
+        #   4   5   6   7
+        #   8   9  10  11
+        #  12  13  14  15
         # PREPARE
         if i < E_MINUS1:
             # NEXT: EASTWARD
@@ -143,7 +147,7 @@ def predict_at_city_zoom(
 
 
         for date in dates:
-            path: Path = output_folder / f'{city}-{date}' / str(zoom) / str(i) / str(j)
+            path: Path = output_folder / f'{city}-{date}' / str(zoom) / str(i) / str(j) + '.png'
             path.mkdir(parents=True, exist_ok=True)
 
             if date == 'winter':
