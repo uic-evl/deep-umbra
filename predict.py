@@ -91,7 +91,6 @@ def predict_at_city_zoom(
             # NEXT: EASTWARD
             se = (i + 2, j + 1)
             if se in ij:
-                # futures[se] = threads.submit(load_input, ij[se])
                 futures[se] = threads.submit(tf.io.read_file, ij[se].as_posix())
         elif i == E:
             # NEXT: WEST EDGE
@@ -183,9 +182,9 @@ def predict_at_city_zoom(
 
     threads.shutdown(wait=True)
     # check for exceptions, can be commented
-    for future in serialize:
-        if future.exception():
-            raise future.exception()
+    # for future in serialize:
+    #     if future.exception():
+    #         raise future.exception()
 
 
 def predict_cities(
