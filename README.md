@@ -33,6 +33,7 @@ Across cities performance analysis:
 | Tokyo         |   0.09014   |   0.04570   |   0.01046   |
 | **Average**   | **0.08608** | **0.03154** | **0.00746** |
 
+### Overview
 ![Overview of Deep Umbra](overview.png)
 This repository contains the code for the paper "Deep Umbra: A Global-Scale Generative Adversarial Approach for Sunlight Access and Shadow Accumulation in Urban Spaces".
 
