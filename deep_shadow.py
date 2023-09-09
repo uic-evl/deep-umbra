@@ -1,229 +1,536 @@
 import time
+import skfmm
 import os
 import datetime
 import tensorflow as tf
+import tensorflow_addons as tfa
+import numpy as np
 import matplotlib.pyplot as plt
 
 from IPython import display
 
-from utils import generate_images
+from utils import upsample, downsample, generate_images
 
 LAMBDA = 100
-loss_object = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+loss_object = tf.keras.losses.BinaryCrossentropy(from_logits=True)  # bce loss
 
-def generator_loss(disc_generated_output, gen_output, target):
-    gan_loss = loss_object(tf.ones_like(disc_generated_output), disc_generated_output)
 
-    # Mean absolute error
-    l1_loss = tf.reduce_mean(tf.abs(target - gen_output))
+def gan_loss(disc_generated_output):
+    return loss_object(tf.ones_like(disc_generated_output), disc_generated_output)
 
-    total_gen_loss = gan_loss + (LAMBDA * l1_loss)
 
-    return total_gen_loss, gan_loss, l1_loss
+def l1_loss(target, gen_output, w=0):
+    return tf.reduce_mean(tf.abs(target - gen_output))
+
+
+def l2_loss(target, gen_output, w=0):
+    return tf.reduce_mean(tf.square(target - gen_output))
+
+
+def street_l2_loss(target, gen_output, street_img):
+    return tf.reduce_mean(tf.where(street_img > - 1, tf.square(target - gen_output), 0))
+
+
+huber = tf.keras.losses.Huber(reduction=tf.keras.losses.Reduction.AUTO)
+def l1_smooth_loss(target, gen_output): return huber(target, gen_output)
+
+
+def ssim_multiscale_loss(target, gen_output):
+    # *** generates nan values ***
+    ms_ssim = tf.reduce_mean(tf.image.ssim_multiscale(
+        target, gen_output, max_val=1.))
+    return 1 - ms_ssim
+
+
+def ssim_loss(target, gen_output, w=0):
+    ssim = tf.reduce_mean(tf.image.ssim(target, gen_output, 1.))
+    return 1 - ssim
+
+
+def sobel(img): return tf.image.sobel_edges(img)
+
+
+def sobel_loss(target, gen_output, w=0):
+    return tf.reduce_mean(
+        tf.square(sobel(target) - sobel(gen_output)))
+
+
+def berhu_loss(target, gen_output):
+    c = 1/5 * tf.reduce_max(tf.abs(gen_output - target))
+    abs_diff = tf.abs(gen_output - target)
+    berhu_loss = tf.reduce_mean(
+        tf.where(abs_diff <= c, abs_diff, (abs_diff**2 + c**2)/(2*c)))
+
+    return berhu_loss
+
+
+def psnr_loss(target, gen_output):
+    max_pixel = 1.0
+    psnr_val = tf.reduce_mean((10.0 * tf.math.log((max_pixel ** 2) / (
+        tf.reduce_mean(tf.square(target - gen_output + 1e-8), axis=-1))))) // 2.303
+    # normalize between 0 and 1. max val = 159, min val = 0
+    normalized_psnr = psnr_val / 159.0
+    return 1 - normalized_psnr
+
+
+# Using Lambda
+def generator_loss(disc_generated_output, gen_output, target, loss_funcs):
+
+    _gan_loss = gan_loss(disc_generated_output)
+
+    _loss = 0
+    for loss_func in loss_funcs:
+        _loss += loss_func(target, gen_output)
+
+    total_gen_loss = _gan_loss + LAMBDA*_loss
+
+    return total_gen_loss, _gan_loss, _loss
+
 
 def discriminator_loss(disc_real_output, disc_generated_output):
     real_loss = loss_object(tf.ones_like(disc_real_output), disc_real_output)
 
-    generated_loss = loss_object(tf.zeros_like(disc_generated_output), disc_generated_output)
+    generated_loss = loss_object(tf.zeros_like(
+        disc_generated_output), disc_generated_output)
 
     total_disc_loss = real_loss + generated_loss
 
     return total_disc_loss
 
-def downsample(filters, size, apply_batchnorm=True):
+
+# Check if specnorm, instancenorm, batchnorm required in the different models we will try!!
+def resblock(filters, size, x, apply_specnorm=False):
+
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    result = tf.keras.Sequential()
-    result.add(tf.keras.layers.Conv2D(filters, size, strides=2, padding='same',kernel_initializer=initializer, use_bias=False))
+    if (apply_specnorm):
+        fx = tfa.layers.SpectralNormalization(
+            tf.keras.layers.Conv2D(filters, size, padding='same', kernel_initializer=initializer, use_bias=False))(x)
+    else:
+        fx = tf.keras.layers.Conv2D(
+            filters, size, padding='same', kernel_initializer=initializer, use_bias=False)(x)
+    fx = tf.keras.layers.BatchNormalization()(fx)
 
-    if apply_batchnorm:
-        result.add(tf.keras.layers.BatchNormalization())
+    if (apply_specnorm):
+        fx = tfa.layers.SpectralNormalization(
+            tf.keras.layers.Conv2D(filters, size, padding='same', kernel_initializer=initializer, use_bias=False))(x)
+    else:
+        fx = tf.keras.layers.Conv2D(
+            filters, size, padding='same', kernel_initializer=initializer, use_bias=False)(x)
+    fx = tf.keras.layers.BatchNormalization()(fx)
 
-    result.add(tf.keras.layers.LeakyReLU())
+    out = tf.keras.layers.Add()([x, fx])
+    out = tf.keras.layers.ReLU()(out)
 
-    return result
+    return out
 
-def upsample(filters, size, apply_dropout=False):
-    initializer = tf.random_normal_initializer(0., 0.02)
 
-    result = tf.keras.Sequential()
-    result.add(tf.keras.layers.Conv2DTranspose(filters, size, strides=2,padding='same',kernel_initializer=initializer,use_bias=False))
-    result.add(tf.keras.layers.BatchNormalization())
+class Self_Attention(tf.keras.layers.Layer):
+    def __init__(self, in_dim):
+        super(Self_Attention, self).__init__()
 
-    if apply_dropout:
-        result.add(tf.keras.layers.Dropout(0.5))
+        # Construct the conv layers
+        self.query_conv = tf.keras.layers.Conv2D(
+            filters=in_dim // 2, kernel_size=1)
+        self.key_conv = tf.keras.layers.Conv2D(
+            filters=in_dim // 2, kernel_size=1)
+        self.value_conv = tf.keras.layers.Conv2D(filters=in_dim, kernel_size=1)
 
-    result.add(tf.keras.layers.ReLU())
+        # Initialize gamma as 0
+        self.gamma = tf.Variable(tf.zeros(shape=(1,)), trainable=True)
+        self.softmax = tf.keras.layers.Softmax(axis=-1)
 
-    return result
+    @tf.function
+    def call(self, x, batch_size=1):
+        """
+        inputs:
+            x: input feature maps (B * C * W * H)
+        returns:
+            out: self-attention value + input feature
+            attention: B * N * N (N is Width*Height)
+        """
+        m_batchsize, width, height, C = batch_size, x.shape[1], x.shape[2], x.shape[3]
 
-def Generator(width, height):
+        proj_query = tf.reshape(self.query_conv(
+            x), (m_batchsize, -1, width * height))
+        proj_query = tf.transpose(proj_query, perm=[0, 2, 1])
+
+        proj_key = tf.reshape(self.key_conv(
+            x), (m_batchsize, -1, width * height))  # B * C * N
+
+        energy = tf.matmul(proj_query, proj_key)  # batch matrix-matrix product
+        attention = self.softmax(energy)  # B * N * N
+        proj_value = tf.reshape(self.value_conv(
+            x), (m_batchsize, -1, width * height))  # B * C * N
+        # batch matrix-matrix product
+        out = tf.matmul(proj_value, tf.transpose(attention, perm=[0, 2, 1]))
+        out = tf.reshape(out, (m_batchsize, width, height, C))  # B * C * W * H
+
+        out = self.gamma * out + x
+        return out, attention
+
+
+def Generator(width, height, down_stack, up_stack, latitude=False, date=False, type='unet', attention=False):
+
+    def unet(x):
+        # Downsampling through the model
+        skips = []
+        for down in down_stack:
+            x = down(x)
+            skips.append(x)
+
+        skips = reversed(skips[:-1])
+
+        i = 0
+        # Upsampling and establishing the skip connections
+        for up, skip in zip(up_stack, skips):
+            x = up(x)
+            x = tf.keras.layers.Concatenate()([x, skip])
+            if (i == 6 and attention):
+                self_attn = Self_Attention(in_dim=x.shape[3])
+                x, _ = self_attn(x)
+            i += 1
+
+        return x
+
+    def resnet9(x):
+        # 2 downsampling blocks
+        for down in down_stack:
+            x = down(x)
+
+        if attention:
+            self_attn = Self_Attention(in_dim=x.shape[3])
+            x, _ = self_attn(x)
+
+        # 9 residual blocks
+        for i in range(9):
+            x = resblock(128, 4, x, apply_specnorm=attention)
+
+        # 2 upsampling blocks
+        for up in up_stack:
+            x = up(x)
+
+        return x
+
+    def gen_pix2pixHD(x):
+        original_size = (x.shape[1], x.shape[2])
+        reduced_size = (original_size[0] // 2, original_size[1] // 2)
+
+        inputs_G2 = x
+        inputs_G1 = tf.image.resize(inputs_G2, reduced_size)
+
+        # inputs_G1 = tf.keras.layers.Input(shape=[int(x.shape[1]/2), int(x.shape[2]/2), x.shape[3]])
+
+        # Local Enhancer G2
+        G2_x = inputs_G2
+
+        G2_x = downsample(32, 4)(G2_x)  # (bs, 256, 256, 32)
+        G2_x = downsample(64, 4)(G2_x)  # (bs, 128, 128, 64)
+
+        # Global Generator G1
+        G1_x = inputs_G1
+
+        # downsample for G1
+        G1_x = downsample(64, 4)(G1_x)  # (bs, 128, 128, 64)
+        G1_x = downsample(128, 4)(G1_x)  # (bs, 64, 64, 128)
+        G1_x = downsample(256, 4)(G1_x)  # (bs, 32, 32, 256)
+        G1_x = downsample(512, 4)(G1_x)  # (bs, 16, 16, 512)
+
+        for _ in range(9):
+            G1_x = resblock(512, 4, G1_x)
+
+        # upsample for G1
+        G1_x = upsample(256, 4)(G1_x)  # (bs, 32, 32, 256)
+        G1_x = upsample(128, 4)(G1_x)  # (bs, 64, 64, 128)
+        G1_x = upsample(64, 4)(G1_x)  # (bs, 128, 128, 64)
+
+        # Add G1_x to G2_x.
+        G2_x = tf.keras.layers.Add()([G2_x, G1_x])  # (bs, 128, 128, 64)
+
+        # residual blocks for G2
+        G2_x = resblock(64, 4, G2_x)  # (bs, 128, 128, 64)
+        G2_x = resblock(64, 4, G2_x)  # (bs, 128, 128, 64)
+        G2_x = resblock(64, 4, G2_x)  # (bs, 128, 128, 64)
+
+        # upsample for G2
+        G2_x = upsample(32, 4)(G2_x)  # (bs, 256, 256, 32)
+
+        return G2_x
+
     inputs = tf.keras.layers.Input(shape=[width, height, 1])
-    lat = tf.keras.layers.Input(shape=[width,height,1])
-    dat = tf.keras.layers.Input(shape=[width,height,1])
-
-    down_stack = [
-        downsample(64, 4, apply_batchnorm=False),  # (batch_size, 128, 128, 64)
-        downsample(128, 4),  # (batch_size, 64, 64, 128)
-        downsample(256, 4),  # (batch_size, 32, 32, 256)
-        downsample(512, 4),  # (batch_size, 16, 16, 512)
-        downsample(512, 4),  # (batch_size, 8, 8, 512)
-        downsample(512, 4),  # (batch_size, 4, 4, 512)
-        downsample(512, 4),  # (batch_size, 2, 2, 512)
-        downsample(512, 4),  # (batch_size, 1, 1, 512)
-    ]
-
-    up_stack = [
-        upsample(512, 4, apply_dropout=True),  # (batch_size, 2, 2, 1024)
-        upsample(512, 4, apply_dropout=True),  # (batch_size, 4, 4, 1024)
-        upsample(512, 4, apply_dropout=True),  # (batch_size, 8, 8, 1024)
-        upsample(512, 4),  # (batch_size, 16, 16, 1024)
-        upsample(256, 4),  # (batch_size, 32, 32, 512)
-        upsample(128, 4),  # (batch_size, 64, 64, 256)
-        upsample(64, 4),  # (batch_size, 128, 128, 128)
-    ]
+    if latitude:
+        lat = tf.keras.layers.Input(shape=[width, height, 1])
+    if date:
+        dat = tf.keras.layers.Input(shape=[width, height, 1])
 
     initializer = tf.random_normal_initializer(0., 0.02)
     last = tf.keras.layers.Conv2DTranspose(1, 4,
-                                         strides=2,
-                                         padding='same',
-                                         kernel_initializer=initializer,
-                                         activation='tanh')  # (batch_size, 256, 256, 3)
+                                           strides=2,
+                                           padding='same',
+                                           kernel_initializer=initializer,
+                                           activation='tanh')  # (batch_size, 512, 512, 1)
 
-    x = tf.keras.layers.concatenate([inputs, lat, dat])
+    if latitude and date:
+        x = tf.keras.layers.concatenate([inputs, lat, dat])
+    elif latitude:
+        x = tf.keras.layers.concatenate([inputs, lat])
+    elif date:
+        x = tf.keras.layers.concatenate([inputs, dat])
+    else:
+        x = inputs
 
-    # Downsampling through the model
-    skips = []
-    for down in down_stack:
-        x = down(x)
-        skips.append(x)
-
-    skips = reversed(skips[:-1])
-
-    # Upsampling and establishing the skip connections
-    for up, skip in zip(up_stack, skips):
-        x = up(x)
-        x = tf.keras.layers.Concatenate()([x, skip])
+    if (type == 'unet'):
+        x = unet(x)
+    elif (type == 'resnet9'):
+        x = resnet9(x)
+    elif (type == 'pix2pixHD'):
+        x = gen_pix2pixHD(x)
 
     x = last(x)
 
-    return tf.keras.Model(inputs=[inputs, lat, dat], outputs=x)
+    ip = [inputs]
+    if latitude:
+        ip.append(lat)
+    if date:
+        ip.append(dat)
+
+    return tf.keras.Model(inputs=ip, outputs=x)
 
 
-def Discriminator(width, height):
+def Discriminator(width, height, latitude=False, date=False, type='unet', attention=False):
+
     initializer = tf.random_normal_initializer(0., 0.02)
 
     inp = tf.keras.layers.Input(shape=[width, height, 1], name='input_image')
     tar = tf.keras.layers.Input(shape=[width, height, 1], name='target_image')
-    lat = tf.keras.layers.Input(shape=[width, height, 1], name='latitude')
-    dat = tf.keras.layers.Input(shape=[width, height, 1], name='date')
+    if latitude:
+        lat = tf.keras.layers.Input(shape=[width, height, 1], name='latitude')
+    if date:
+        dat = tf.keras.layers.Input(shape=[width, height, 1], name='date')
 
-    x = tf.keras.layers.concatenate([inp, tar, lat, dat])  # (batch_size, 256, 256, channels*2)
+    if (latitude and date):
+        x = tf.keras.layers.concatenate([inp, tar, lat, dat])
+    elif latitude:
+        x = tf.keras.layers.concatenate([inp, tar, lat])
+    elif date:
+        x = tf.keras.layers.concatenate([inp, tar, dat])
+    else:
+        x = tf.keras.layers.concatenate([inp, tar])
 
-    down1 = downsample(64, 4, False)(x)  # (batch_size, 128, 128, 64)
-    down2 = downsample(128, 4)(down1)  # (batch_size, 64, 64, 128)
-    down3 = downsample(256, 4)(down2)  # (batch_size, 32, 32, 256)
+    down1 = downsample(64, 4, apply_batchnorm=False,
+                       apply_specnorm=attention)(x)
+    down2 = downsample(128, 4, apply_batchnorm=True, apply_specnorm=attention)(
+        down1)
+    # add attention
+    if (attention):
+        self_attn = Self_Attention(in_dim=down2.shape[3])
+        down2, _ = self_attn(down2)
+    down3 = downsample(256, 4, apply_batchnorm=True, apply_specnorm=attention)(
+        down2)
 
-    zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3)  # (batch_size, 34, 34, 256)
-    conv = tf.keras.layers.Conv2D(512, 4, strides=1,kernel_initializer=initializer,use_bias=False)(zero_pad1)  # (batch_size, 31, 31, 512)
+    zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3)
+    down4 = downsample(512, 4, strides=1, apply_batchnorm=True, apply_specnorm=attention)(
+        zero_pad1)  # (batch_size, 31, 31, 512)
 
-    batchnorm1 = tf.keras.layers.BatchNormalization()(conv)
+    zero_pad2 = tf.keras.layers.ZeroPadding2D()(
+        down4)
 
-    leaky_relu = tf.keras.layers.LeakyReLU()(batchnorm1)
+    last = tf.keras.layers.Conv2D(1, 4, strides=1, kernel_initializer=initializer)(
+        zero_pad2)
 
-    zero_pad2 = tf.keras.layers.ZeroPadding2D()(leaky_relu)  # (batch_size, 33, 33, 512)
+    ip = [inp, tar]
+    if latitude:
+        ip.append(lat)
+    if date:
+        ip.append(dat)
 
-    last = tf.keras.layers.Conv2D(1, 4, strides=1,kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
+    if type == 'pix2pixHD':
+        return tf.keras.Model(inputs=ip, outputs=[down1, down2, down3, last])
+    else:
+        return tf.keras.Model(inputs=ip, outputs=last)
 
-    return tf.keras.Model(inputs=[inp, tar, lat, dat], outputs=last)
 
 class DeepShadow():
-    
-    def __init__(self, width, height):
-        self.generator = Generator(width, height)
-        self.discriminator = Discriminator(width, height)
-    
+
+    def __init__(self, width, height, down_stack, up_stack, latitude=True, date=True, loss_funcs=[l1_loss], type='unet', attention=False, model_name='deepshadow', kde_func=None, min_kde=None, max_kde=None):
+        self.lat = latitude
+        self.dat = date
+        self.loss_funcs = loss_funcs
+        self.attention = attention
+        self.type = type
+        self.model_name = model_name
+        self.generator = Generator(
+            width, height, down_stack, up_stack, latitude=self.lat, date=self.dat, type=self.type, attention=self.attention)
+        self.discriminator = Discriminator(
+            width, height, latitude=self.lat, date=self.dat, attention=self.attention)
+        self.kde_func = kde_func
+        self.min_kde = min_kde
+        self.max_kde = max_kde
+
+    def compute_loss(self, test_ds):
+        rmse = 0
+        for test_input, test_target, test_street, test_latitude, test_date, _ in test_ds:
+
+            ip = [test_input]
+            if self.lat:
+                ip.append(test_latitude)
+            if self.dat:
+                ip.append(test_date)
+
+            prediction = self.generator(ip, training=True)
+            prediction = prediction * 0.5 + 0.5
+            target = test_target * 0.5 + 0.5
+
+            rmse += tf.sqrt(tf.reduce_mean(tf.square(prediction - target)))
+
+        return rmse / len(test_ds)
+
     @tf.function
-    def train_step(self, input_image, target, input_latitude, input_date, summary_writer, step):
+    def train_step(self, input_image, target, street, input_latitude, input_date, summary_writer, step):
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            gen_output = self.generator([input_image, input_latitude, input_date], training=True)
+            ip = [input_image]
+            if self.lat:
+                ip.append(input_latitude)
+            if self.dat:
+                ip.append(input_date)
 
-            disc_real_output = self.discriminator([input_image, target, input_latitude, input_date], training=True)
-            disc_generated_output = self.discriminator([input_image, gen_output, input_latitude, input_date], training=True)
+            gen_output = self.generator(ip, training=True)
 
-            gen_total_loss, gen_gan_loss, gen_l1_loss = generator_loss(disc_generated_output, gen_output, target)
-            disc_loss = discriminator_loss(disc_real_output, disc_generated_output)
+            real = ip[:]
+            gen = ip[:]
+            real.insert(1, target)
+            gen.insert(1, gen_output)
 
+            disc_real_output = self.discriminator(real, training=True)
+            disc_generated_output = self.discriminator(gen, training=True)
 
-        generator_gradients = gen_tape.gradient(gen_total_loss, self.generator.trainable_variables)
-        discriminator_gradients = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
+            gen_total_loss, gen_gan_loss, gen_loss_func = generator_loss(
+                disc_generated_output, gen_output, target, self.loss_funcs)
 
-        self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.trainable_variables))
-        self.discriminator_optimizer.apply_gradients(zip(discriminator_gradients, self.discriminator.trainable_variables))
+            # street_loss = street_l2_loss(target, gen_output, street)
+            # gen_total_loss += (LAMBDA * street_loss)
+
+            disc_loss = discriminator_loss(
+                disc_real_output, disc_generated_output)
+
+        generator_gradients = gen_tape.gradient(
+            gen_total_loss, self.generator.trainable_variables)
+        discriminator_gradients = disc_tape.gradient(
+            disc_loss, self.discriminator.trainable_variables)
+
+        self.generator_optimizer.apply_gradients(
+            zip(generator_gradients, self.generator.trainable_variables))
+        self.discriminator_optimizer.apply_gradients(
+            zip(discriminator_gradients, self.discriminator.trainable_variables))
 
         with summary_writer.as_default():
-            tf.summary.scalar('gen_total_loss', gen_total_loss, step=step//1000)
+            tf.summary.scalar('gen_total_loss',
+                              gen_total_loss, step=step//1000)
             tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=step//1000)
-            tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=step//1000)
             tf.summary.scalar('disc_loss', disc_loss, step=step//1000)
 
-    def fit(self, checkpoint_path, train_ds, test_ds, steps):
+        if (step % 1000 == 0):
+            tf.print("custom_loss_func: ", gen_loss_func)
+            tf.print("gan_loss: ", gen_gan_loss)
+            tf.print("disc_loss: ", disc_loss)
+            # tf.print("street_loss: ", street_loss)
 
-        self.generator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
+    def fit(self, checkpoint_path, train_ds, test_ds, steps, min_delta=0.0001, patience=200):
 
-        summary_writer = tf.summary.create_file_writer("logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        g_learning = 1e-4 if self.attention else 2e-4
+        d_learning = 4e-4 if self.attention else 2e-4
+
+        self.generator_optimizer = tf.keras.optimizers.Adam(
+            g_learning, beta_1=0.5)
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(
+            d_learning, beta_1=0.5)
+
+        # logs fit with model name
+        summary_writer = tf.summary.create_file_writer(
+            "logs/fit_new/" + self.model_name)
 
         checkpoint = tf.train.Checkpoint(generator_optimizer=self.generator_optimizer,
                                          discriminator_optimizer=self.discriminator_optimizer,
                                          generator=self.generator,
                                          discriminator=self.discriminator)
-        manager = tf.train.CheckpointManager(checkpoint, directory=checkpoint_path, max_to_keep=1)
+        manager = tf.train.CheckpointManager(
+            checkpoint, directory=checkpoint_path, max_to_keep=1)
 
         if test_ds != None:
-            example_input, example_target, example_date, example_lat = next(iter(test_ds.take(1)))
-        
+            example_input, example_target, example_street, example_lat, example_date, _ = next(
+                iter(test_ds.take(1)))
+
         start = time.time()
-        for step, (input_image, target, latitude, date) in train_ds.repeat().take(steps).enumerate(): 
+        best_loss = np.inf
+
+        for step, (input_image, target, street, latitude, date, filepath) in train_ds.repeat().take(steps).enumerate():
+
             if (step) % 1000 == 0:
                 display.clear_output(wait=True)
 
                 if step != 0:
-                    print(f'Time taken for 1000 steps: {time.time()-start:.2f} sec\n')
+                    print(
+                        f'Time taken for 1000 steps: {time.time()-start:.2f} sec\n')
 
                 start = time.time()
 
                 if test_ds != None:
-                    generate_images(self.generator, example_input, example_lat, example_date, example_target)
-                    
+                    generate_images(self.generator, example_input, example_lat, example_date,
+                                    example_target, None, latitude=self.lat, date=self.dat, save=False)
+
                 print(f"Step: {step//1000}k")
 
-            self.train_step(input_image, target, latitude, date, summary_writer, step)
+            ip_image = input_image * 0.5 + 0.5
+            ip_image = ip_image * 550
+
+            count = tf.math.count_nonzero(ip_image, dtype=tf.dtypes.float32)
+
+            avg_tile_height = tf.reduce_sum(ip_image) / count
+            kde_tile = self.kde_func(avg_tile_height)
+            kde_tile = ((kde_tile - self.min_kde) /
+                        self.max_kde - self.min_kde) * 0.95
+            error_weight = 1 - kde_tile
+
+            print(kde_tile, error_weight)
+
+            self.train_step(input_image, target, street, latitude,
+                            date, summary_writer, step)
 
             # Training step
             if (step+1) % 10 == 0:
                 print('.', end='', flush=True)
 
+            # Early stopping check
+            if test_ds is not None and (step + 1) % patience == 0:
+                loss = self.compute_loss(test_ds)
+                if loss < best_loss:
+                    best_loss = loss
+                    manager.save()
 
-            # Save (checkpoint) the model every 10k steps
-            if (step + 1) % 10000 == 0:
-                manager.save()
-        
-        manager.save()
-        
+        loss = self.compute_loss(test_ds)
+        if loss < best_loss:
+            best_loss = loss
+            manager.save()
+
+        # manager.save()
 
     def restore(self, checkpoint_path):
+        g_learning = 1e-4 if self.attention else 2e-4
+        d_learning = 4e-4 if self.attention else 2e-4
 
-        self.generator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
+        self.generator_optimizer = tf.keras.optimizers.Adam(
+            g_learning, beta_1=0.5)
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(
+            d_learning, beta_1=0.5)
 
         checkpoint = tf.train.Checkpoint(generator_optimizer=self.generator_optimizer,
-                                     discriminator_optimizer=self.discriminator_optimizer,
-                                     generator=self.generator,
-                                     discriminator=self.discriminator)
+                                         discriminator_optimizer=self.discriminator_optimizer,
+                                         generator=self.generator,
+                                         discriminator=self.discriminator)
 
-        checkpoint.restore(tf.train.latest_checkpoint(checkpoint_path)).expect_partial()
-        
+        checkpoint.restore(tf.train.latest_checkpoint(
+            checkpoint_path)).expect_partial()
+
     # Load a checkpoint and save the model in the SavedModel format
     def ckpt2saved(self, checkpoint_path, save_path):
         self.restore(checkpoint_path)

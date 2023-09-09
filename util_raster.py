@@ -192,6 +192,7 @@ def get_shadow_image(
         mask: Optional[list[float]] = None,
         threshold: tuple[float, float] = (0.0, 1.0)
 ) -> np.ndarray:
+    print(gw, gs, ge, gn, zoom, basedir, mask, threshold)
     if mask is not None:
         gs = max(gs, mask[0])
         gw = max(gw, mask[1])

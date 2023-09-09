@@ -7,3 +7,9 @@ processes/
 __pycache__/
 logs/
 training_checkpoints/
+training_checkpoints_new/
+envs/
+deep_shadows.egg-info/
+dist/
+examples/
+misc/

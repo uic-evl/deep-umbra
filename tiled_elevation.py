@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import time
 import warnings
 
 warnings.filterwarnings('ignore', '.*area.*')
-from cutil import *
+# from cutil import * # *** Check if it is necessary to import this module *** #
 import requests
 import concurrent.futures
 import io
