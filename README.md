@@ -40,7 +40,7 @@ This repository contains the code for the paper "Deep Umbra: A Global-Scale Gene
 
 Authors:
 
-Kazi Shahrukh Omar (UIC)
+[Kazi Shahrukh Omar](https://komar41.github.io) (UIC)
 
 Gustavo Moreira (UFF)
 
