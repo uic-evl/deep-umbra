@@ -48,6 +48,8 @@ Daniel Hodczak (UIC)
 
 Maryam Hosseini (Rutgers / NYU)
 
+Nicola Colaninno (Polytechnic University of Milan)
+
 Marcos Lage (UFF)
 
 [Fabio Miranda](https://fmiranda.me) (UIC)
