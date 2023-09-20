@@ -19,11 +19,11 @@ def gan_loss(disc_generated_output):
     return loss_object(tf.ones_like(disc_generated_output), disc_generated_output)
 
 
-def l1_loss(target, gen_output, w=0):
+def l1_loss(target, gen_output):
     return tf.reduce_mean(tf.abs(target - gen_output))
 
 
-def l2_loss(target, gen_output, w=0):
+def l2_loss(target, gen_output):
     return tf.reduce_mean(tf.square(target - gen_output))
 
 
@@ -42,7 +42,7 @@ def ssim_multiscale_loss(target, gen_output):
     return 1 - ms_ssim
 
 
-def ssim_loss(target, gen_output, w=0):
+def ssim_loss(target, gen_output):
     ssim = tf.reduce_mean(tf.image.ssim(target, gen_output, 1.))
     return 1 - ssim
 
@@ -50,7 +50,7 @@ def ssim_loss(target, gen_output, w=0):
 def sobel(img): return tf.image.sobel_edges(img)
 
 
-def sobel_loss(target, gen_output, w=0):
+def sobel_loss(target, gen_output):
     return tf.reduce_mean(
         tf.square(sobel(target) - sobel(gen_output)))
 
@@ -212,51 +212,6 @@ def Generator(width, height, down_stack, up_stack, latitude=False, date=False, t
 
         return x
 
-    def gen_pix2pixHD(x):
-        original_size = (x.shape[1], x.shape[2])
-        reduced_size = (original_size[0] // 2, original_size[1] // 2)
-
-        inputs_G2 = x
-        inputs_G1 = tf.image.resize(inputs_G2, reduced_size)
-
-        # inputs_G1 = tf.keras.layers.Input(shape=[int(x.shape[1]/2), int(x.shape[2]/2), x.shape[3]])
-
-        # Local Enhancer G2
-        G2_x = inputs_G2
-
-        G2_x = downsample(32, 4)(G2_x)  # (bs, 256, 256, 32)
-        G2_x = downsample(64, 4)(G2_x)  # (bs, 128, 128, 64)
-
-        # Global Generator G1
-        G1_x = inputs_G1
-
-        # downsample for G1
-        G1_x = downsample(64, 4)(G1_x)  # (bs, 128, 128, 64)
-        G1_x = downsample(128, 4)(G1_x)  # (bs, 64, 64, 128)
-        G1_x = downsample(256, 4)(G1_x)  # (bs, 32, 32, 256)
-        G1_x = downsample(512, 4)(G1_x)  # (bs, 16, 16, 512)
-
-        for _ in range(9):
-            G1_x = resblock(512, 4, G1_x)
-
-        # upsample for G1
-        G1_x = upsample(256, 4)(G1_x)  # (bs, 32, 32, 256)
-        G1_x = upsample(128, 4)(G1_x)  # (bs, 64, 64, 128)
-        G1_x = upsample(64, 4)(G1_x)  # (bs, 128, 128, 64)
-
-        # Add G1_x to G2_x.
-        G2_x = tf.keras.layers.Add()([G2_x, G1_x])  # (bs, 128, 128, 64)
-
-        # residual blocks for G2
-        G2_x = resblock(64, 4, G2_x)  # (bs, 128, 128, 64)
-        G2_x = resblock(64, 4, G2_x)  # (bs, 128, 128, 64)
-        G2_x = resblock(64, 4, G2_x)  # (bs, 128, 128, 64)
-
-        # upsample for G2
-        G2_x = upsample(32, 4)(G2_x)  # (bs, 256, 256, 32)
-
-        return G2_x
-
     inputs = tf.keras.layers.Input(shape=[width, height, 1])
     if latitude:
         lat = tf.keras.layers.Input(shape=[width, height, 1])
@@ -283,8 +238,6 @@ def Generator(width, height, down_stack, up_stack, latitude=False, date=False, t
         x = unet(x)
     elif (type == 'resnet9'):
         x = resnet9(x)
-    elif (type == 'pix2pixHD'):
-        x = gen_pix2pixHD(x)
 
     x = last(x)
 
@@ -344,15 +297,12 @@ def Discriminator(width, height, latitude=False, date=False, type='unet', attent
     if date:
         ip.append(dat)
 
-    if type == 'pix2pixHD':
-        return tf.keras.Model(inputs=ip, outputs=[down1, down2, down3, last])
-    else:
-        return tf.keras.Model(inputs=ip, outputs=last)
+    return tf.keras.Model(inputs=ip, outputs=last)
 
 
 class DeepShadow():
 
-    def __init__(self, width, height, down_stack, up_stack, latitude=True, date=True, loss_funcs=[l1_loss], type='unet', attention=False, model_name='deepshadow', kde_func=None, min_kde=None, max_kde=None):
+    def __init__(self, width, height, down_stack, up_stack, latitude=True, date=True, loss_funcs=[l1_loss], type='unet', attention=False, model_name='deepshadow'):
         self.lat = latitude
         self.dat = date
         self.loss_funcs = loss_funcs
@@ -363,13 +313,10 @@ class DeepShadow():
             width, height, down_stack, up_stack, latitude=self.lat, date=self.dat, type=self.type, attention=self.attention)
         self.discriminator = Discriminator(
             width, height, latitude=self.lat, date=self.dat, attention=self.attention)
-        self.kde_func = kde_func
-        self.min_kde = min_kde
-        self.max_kde = max_kde
 
     def compute_loss(self, test_ds):
         rmse = 0
-        for test_input, test_target, test_street, test_latitude, test_date, _ in test_ds:
+        for test_input, test_target, _, test_latitude, test_date, _ in test_ds:
 
             ip = [test_input]
             if self.lat:
@@ -407,9 +354,6 @@ class DeepShadow():
             gen_total_loss, gen_gan_loss, gen_loss_func = generator_loss(
                 disc_generated_output, gen_output, target, self.loss_funcs)
 
-            # street_loss = street_l2_loss(target, gen_output, street)
-            # gen_total_loss += (LAMBDA * street_loss)
-
             disc_loss = discriminator_loss(
                 disc_real_output, disc_generated_output)
 
@@ -433,7 +377,6 @@ class DeepShadow():
             tf.print("custom_loss_func: ", gen_loss_func)
             tf.print("gan_loss: ", gen_gan_loss)
             tf.print("disc_loss: ", disc_loss)
-            # tf.print("street_loss: ", street_loss)
 
     def fit(self, checkpoint_path, train_ds, test_ds, steps, min_delta=0.0001, patience=200):
 
@@ -457,13 +400,13 @@ class DeepShadow():
             checkpoint, directory=checkpoint_path, max_to_keep=1)
 
         if test_ds != None:
-            example_input, example_target, example_street, example_lat, example_date, _ = next(
+            example_input, example_target, _, example_lat, example_date, _ = next(
                 iter(test_ds.take(1)))
 
         start = time.time()
         best_loss = np.inf
 
-        for step, (input_image, target, street, latitude, date, filepath) in train_ds.repeat().take(steps).enumerate():
+        for step, (input_image, target, street, latitude, date, _) in train_ds.repeat().take(steps).enumerate():
 
             if (step) % 1000 == 0:
                 display.clear_output(wait=True)
@@ -479,19 +422,6 @@ class DeepShadow():
                                     example_target, None, latitude=self.lat, date=self.dat, save=False)
 
                 print(f"Step: {step//1000}k")
-
-            ip_image = input_image * 0.5 + 0.5
-            ip_image = ip_image * 550
-
-            count = tf.math.count_nonzero(ip_image, dtype=tf.dtypes.float32)
-
-            avg_tile_height = tf.reduce_sum(ip_image) / count
-            kde_tile = self.kde_func(avg_tile_height)
-            kde_tile = ((kde_tile - self.min_kde) /
-                        self.max_kde - self.min_kde) * 0.95
-            error_weight = 1 - kde_tile
-
-            print(kde_tile, error_weight)
 
             self.train_step(input_image, target, street, latitude,
                             date, summary_writer, step)

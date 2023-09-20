@@ -67,18 +67,6 @@ def plot_comparison(input_height, target, prediction, path=None, save=False):
     rmse = np.sqrt(np.mean((prediction - target) ** 2))
     ssim = tf.image.ssim(prediction, target, max_val=1.0).numpy()
 
-    # phi = np.where(target == 0, -1, 0) + 0.5
-
-    # w = skfmm.distance(phi, dx = 1)
-    # w = np. where(w < 0, 0, w)
-    # # w = w / np.max(w) # normalize between 0 and 1
-
-    # diff = tf.square(target - prediction)
-    # weighted_diff = tf.multiply(w, diff)
-    # weighted_rmse = tf.sqrt(tf.reduce_mean(weighted_diff))
-
-    # print("mae: %f mse: %f rmse: %f ssim: %f" % (mae, mse, rmse, ssim))
-
     display_list = [input_height, target, prediction]
     title = ['Input Image', 'Ground Truth', 'Predicted Image']
 
@@ -407,7 +395,7 @@ def get_metrics(test_dataset, generator, latitude=False, date=False):
             ip.append(test_date)
 
         prediction = generator(ip, training=True)
-        # We did not do this before. This is to remove shadows from buildings in the prediction
+        # new: this is to remove shadows from buildings in the prediction
         prediction = np.where(test_input > -1, -1, prediction)
 
         target = test_target.numpy()[:, 128:-128, 128:-128, :]
@@ -419,23 +407,18 @@ def get_metrics(test_dataset, generator, latitude=False, date=False):
         test_street = test_street * 0.5 + 0.5  # new
 
         # new: consider only shadows on streets for both target and prediction
-        target = np.where(test_street > 0, target, 0)
-        prediction = np.where(test_street > 0, prediction, 0)
-
-        # new
-        if (not test_street.any()):
-            continue
+        # target = np.where(test_street > 0, target, 0)
+        # prediction = np.where(test_street > 0, prediction, 0)
+        # if (not test_street.any()):
+        #     continue
 
         mae = np.mean(np.abs(target-prediction))
-        # print("mae: ", mae)
         maes.append(mae)
 
         mse = np.mean((prediction - target) ** 2)
-        # print("mse: ", mse)
         mses.append(mse)
 
         rmse = np.sqrt(mse)
-        # print("rmse: ",rmse)
         rmses.append(rmse)
 
         ssim = 1 - tf.reduce_mean(tf.image.ssim(tf.convert_to_tensor(target),
@@ -526,8 +509,6 @@ def downsample(filters, size, strides=2, apply_batchnorm=True, apply_specnorm=Fa
     initializer = tf.random_normal_initializer(0., 0.02)
 
     result = tf.keras.Sequential()
-    # result.add(tf.keras.layers.Conv2D(filters, size, strides=2,
-    #            padding='same', kernel_initializer=initializer, use_bias=False))
 
     if apply_specnorm:
         result.add(tfa.layers.SpectralNormalization(tf.keras.layers.Conv2D(filters, size, strides=strides,
@@ -549,8 +530,6 @@ def upsample(filters, size, apply_batchnorm=True, apply_specnorm=False, apply_dr
     initializer = tf.random_normal_initializer(0., 0.02)
 
     result = tf.keras.Sequential()
-    # result.add(tf.keras.layers.Conv2DTranspose(filters, size, strides=2,
-    #            padding='same', kernel_initializer=initializer, use_bias=False))
 
     if apply_specnorm:
         result.add(tfa.layers.SpectralNormalization(tf.keras.layers.Conv2DTranspose(filters, size, strides=2,
@@ -661,28 +640,3 @@ def extract_gt_pred(generator, height_path, shadow_path, city, date, zoom, i, j)
     gt = tf.expand_dims(gt, -1)
 
     return input_height, gt, prediction
-
-
-def add_weights(dataset, BATCH_SIZE):
-    weights = []
-    for i, (input_image, real_image, lat_image, date_image, path) in enumerate(dataset):
-        img = input_image[0]
-        phi = tf.where(img == -1.0, 0.0, -1.0) + 0.5
-        w = skfmm.distance(phi, dx=1)
-        w = tf.where(w < 0, 0, w)
-
-        # type cast w to float32
-        w = tf.cast(w, tf.float32)
-
-        # normalize w by dividing by 512
-        # w = w / 512.0
-
-        # w = tf.expand_dims(w, axis=0)
-        weights.append(w)
-
-    weights = tf.data.Dataset.from_tensor_slices(weights)
-    weights = weights.batch(BATCH_SIZE)
-
-    dataset = tf.data.Dataset.zip((dataset, weights))
-
-    return dataset
