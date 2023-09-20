@@ -1,12 +1,13 @@
 from setuptools import dist
-
 dist.Distribution().fetch_build_eggs(['Cython>=0.15.1', 'numpy>=1.10'])
 from Cython.Build import cythonize
 import warnings
 from pathlib import Path
 import numpy
-from setuptools import find_packages
 from setuptools import setup
+from setuptools import find_packages
+
+
 
 path = Path(__file__).parent
 with open(path / 'requirements.txt') as f:
@@ -29,5 +30,5 @@ setup(
         'setuptools>=18.0'
     ],
     include_dirs=[numpy.get_include()],
-    ext_modules=cythonize('cutil/functions.pyx'),
+    # ext_modules=cythonize('cutil/functions.pyx'),
 )

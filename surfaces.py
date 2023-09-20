@@ -83,6 +83,8 @@ def _(
             yield from files
 
 
+
+
 def gen_zonal_stats(
         interface: Union[dict, GeoSeries, GeoDataFrame, str],
         raster: str,
@@ -756,10 +758,13 @@ class DescriptorNetwork(RasterStats):
         return self
 
     def _get_network(self) -> tuple[GeoDataFrame, GeoDataFrame]:
+
         networks = self.networks
         surfaces = self.networks.surfaces
         osm: pyrosm.OSM = networks._osm[surfaces]
         # nodes, geometry = osm.get_network(self.network_type, None, True)
+
+        
         nodes, geometry = None, osm.get_network(self.network_type, None, False)
         self._bbox[surfaces] = geometry.total_bounds
 
