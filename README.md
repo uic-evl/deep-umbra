@@ -54,7 +54,7 @@ Marcos Lage (UFF)
 
 [Fabio Miranda](https://fmiranda.me) (UIC)
 
-**Paper: Arxiv link soon**
+**Paper:** https://arxiv.org/pdf/2402.17169
 
 ## Prerequisites
 
