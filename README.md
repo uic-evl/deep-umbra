@@ -94,7 +94,6 @@ The weights for our pre-trained model can be downloaded [here](https://drive.goo
   volume={11},
   number={2},
   pages={388-401},
-  keywords={Urban areas;Task analysis;Generative adversarial networks;Buildings;Big Data;Urban planning;Training;Urban computing;urban analytics;sunlight access;shadow;generative adversarial networks},
   doi={10.1109/TBDATA.2024.3382964}}
 ```
 
