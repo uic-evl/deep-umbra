@@ -97,3 +97,6 @@ The weights for our pre-trained model can be downloaded [here](https://drive.goo
   keywords={Urban areas;Task analysis;Generative adversarial networks;Buildings;Big Data;Urban planning;Training;Urban computing;urban analytics;sunlight access;shadow;generative adversarial networks},
   doi={10.1109/TBDATA.2024.3382964}}
 ```
+
+## License
+Deep Umbra is MIT Licensed. Free for both commercial and research use.
