@@ -82,3 +82,18 @@ rasterio
 The code is stucture as different Jupyter Notebooks. `01-download-osm-data.ipynb` downloads OpenStreetMap data. A height map is generated with `02-generate-elevation-map`, followed by data preparation in `03-prepare-data.ipynb`, GAN training (`04-GAN-shadow-height-spatial`), evaluation (`05-evaluate-spatial.ipynb`, `06-evaluation-all-cases.ipynb`, `07-evaluation-measurements.ipynb`) and computation of data and performance metrics for multiple cities (`08-compute-cities.ipynb`, `09-compute-urban-metrics.ipynb `, `10-urban-metrics-analysis.ipynb`). Height distribution of training data tiles were inspected in `11-test-height-generalizability` and ablation experiments with different loss functions, generators and attention modules were tested in `12-test-loss-functions`, `13-test-generators-and-attention`, and `14-test-all`. Part of parks case study (what-if experiment) was done in `15-case-study-parks` and image for explanation of padded input image was generated using `16-image_input_padding`.
 
 The weights for our pre-trained model can be downloaded [here](https://drive.google.com/file/d/1DoCpba4L7AlG7ZTvBDXwsLxltLm3ezgH/view?usp=sharing). If you use the weights, you can skip the GAN training and focus on data preparation and inference (remaining steps).
+
+## Citation
+
+```
+@ARTICLE{10483268,
+  author={Omar, Kazi Shahrukh and Moreira, Gustavo and Hodczak, Daniel and Hosseini, Maryam and Colaninno, Nicola and Lage, Marcos and Miranda, Fabio},
+  journal={IEEE Transactions on Big Data}, 
+  title={Deep Umbra: A Generative Approach for Sunlight Access Computation in Urban Spaces}, 
+  year={2025},
+  volume={11},
+  number={2},
+  pages={388-401},
+  keywords={Urban areas;Task analysis;Generative adversarial networks;Buildings;Big Data;Urban planning;Training;Urban computing;urban analytics;sunlight access;shadow;generative adversarial networks},
+  doi={10.1109/TBDATA.2024.3382964}}
+```
